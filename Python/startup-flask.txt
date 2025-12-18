@@ -1,0 +1,9 @@
+# Azure App Service Startup Command for Flask Application
+# This tells Azure how to start your Flask application using Gunicorn
+
+# Production configuration with:
+# - 4 worker processes (adjust based on your App Service plan)
+# - 10 minute timeout (600 seconds) for long-running transcriptions
+# - Bind to all interfaces on port 8000 (Azure will map to 80/443)
+
+gunicorn --bind=0.0.0.0:8000 --workers=4 --timeout=600 --worker-class=sync app:app

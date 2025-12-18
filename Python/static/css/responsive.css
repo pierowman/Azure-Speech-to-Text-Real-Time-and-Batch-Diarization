@@ -1,0 +1,171 @@
+/* Responsive Design - Mobile and Tablet Styles */
+
+@media (max-width: 768px) {
+    /* Layout Adjustments */
+    .speaker-range {
+        grid-template-columns: 1fr;
+    }
+    
+    .comparison-columns {
+        grid-template-columns: 1fr;
+    }
+    
+    .text-comparison {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Button Adjustments */
+    .export-buttons {
+        flex-direction: column;
+    }
+    
+    .export-buttons button {
+        min-width: 100%;
+    }
+    
+    /* Audio Player Adjustments */
+    .audio-player-header {
+        flex-direction: column;
+        gap: 15px;
+    }
+    
+    /* Batch Jobs Adjustments */
+    .batch-jobs-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .batch-jobs-controls {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .job-metadata {
+        grid-template-columns: 1fr;
+    }
+
+    .job-actions {
+        flex-direction: column;
+    }
+
+    .job-action-btn {
+        width: 100%;
+    }
+    
+    /* Segment Adjustments */
+    .segment-line {
+        flex-wrap: wrap;
+    }
+    
+    /* Modal Adjustments */
+    .modal {
+        width: 95%;
+        max-height: 90vh;
+    }
+    
+    .file-modal-content {
+        width: 95%;
+    }
+    
+    /* Stats Grid Adjustments */
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Skeleton Metadata Adjustments */
+    .skeleton-metadata {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    /* Job Properties Adjustments */
+    .job-properties {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    /* Typography Adjustments */
+    header h1 {
+        font-size: 2rem;
+    }
+    
+    header p {
+        font-size: 1rem;
+    }
+    
+    /* Smaller Padding for Mobile */
+    .main-content {
+        padding: 20px;
+    }
+    
+    .upload-section {
+        padding: 20px;
+    }
+    
+    /* Audio Player Compact */
+    .audio-player-container {
+        padding: 15px;
+    }
+    
+    .control-btn {
+        width: 40px;
+        height: 40px;
+        font-size: 1.2rem;
+    }
+    
+    .control-btn.primary {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+    
+    /* Segment Compact */
+    .segment {
+        padding: 10px 12px;
+    }
+    
+    .segment-number {
+        font-size: 0.8rem;
+    }
+    
+    .segment-speaker-dropdown,
+    .speaker-name {
+        font-size: 0.9rem;
+    }
+    
+    .segment-timestamp {
+        font-size: 0.75rem;
+    }
+    
+    /* Modal Compact */
+    .modal-header,
+    .modal-content,
+    .modal-actions {
+        padding: 15px;
+    }
+    
+    .file-modal-header,
+    .file-modal-body,
+    .file-modal-footer {
+        padding: 15px;
+    }
+    
+    /* Button Adjustments */
+    button {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+    
+    /* File Selection Compact */
+    .file-selection-item {
+        padding: 10px;
+    }
+    
+    .file-name {
+        font-size: 0.9rem;
+    }
+    
+    .file-size {
+        font-size: 0.75rem;
+    }
+}

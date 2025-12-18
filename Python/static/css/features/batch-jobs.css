@@ -1,0 +1,163 @@
+/* Batch Jobs Section */
+.batch-jobs-section {
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.batch-jobs-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.batch-jobs-header h2 {
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.batch-jobs-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.auto-refresh-control {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-md);
+}
+
+.job-list-container {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    min-height: 300px;
+}
+
+/* Job Files List */
+.job-files-list {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px dashed var(--gray-300);
+}
+
+.job-files-list h4 {
+    margin: 0 0 10px 0;
+    color: var(--primary-color);
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.job-files-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.job-files-list li {
+    padding: 8px 12px;
+    background: var(--white);
+    border-radius: var(--radius-md);
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    color: var(--gray-700);
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+}
+
+.job-files-list li::before {
+    content: '\1F4C4';  /* ?? Document page emoji - using CSS Unicode escape */
+    font-size: 1rem;
+}
+
+/* Job Actions */
+.job-actions {
+    display: flex;
+    gap: var(--gap-md);
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.job-action-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-weight: 600;
+}
+
+.job-action-btn.view-results {
+    background: var(--primary-color);
+    color: var(--white);
+}
+
+.job-action-btn.view-results:hover {
+    background: #5568d3;
+    transform: scale(1.05);
+}
+
+.job-action-btn.delete {
+    background: var(--error-color);
+    color: var(--white);
+}
+
+.job-action-btn.delete:hover {
+    background: #da190b;
+    transform: scale(1.05);
+}
+
+.job-action-btn.refresh-status {
+    background: var(--warning-color);
+    color: var(--gray-800);
+}
+
+.job-action-btn.refresh-status:hover {
+    background: #e0a800;
+    transform: scale(1.05);
+}
+
+.job-action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Job Properties */
+.job-properties {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--gap-md);
+    margin-top: 10px;
+}
+
+.job-property {
+    background: var(--white);
+    padding: 10px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--gray-200);
+}
+
+.job-property-label {
+    font-size: 0.75rem;
+    color: var(--gray-600);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 3px;
+}
+
+.job-property-value {
+    font-size: 1rem;
+    color: var(--gray-800);
+    font-weight: 600;
+}

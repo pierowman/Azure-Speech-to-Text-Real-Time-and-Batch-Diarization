@@ -1,0 +1,34 @@
+/* Azure Speech-to-Text Application Styles - Modular Structure */
+
+/* Base Styles - Variables, Reset, and Utilities */
+@import url('base/variables.css');
+@import url('base/reset.css');
+@import url('base/utilities.css');
+
+/* Layout Styles - Structure and Containers */
+@import url('layout/container.css');
+@import url('layout/header.css');
+@import url('layout/footer.css');
+
+/* Component Styles - Reusable UI Components */
+@import url('components/buttons.css');
+@import url('components/forms.css');
+@import url('components/tabs.css');
+@import url('components/modals.css');
+@import url('components/cards.css');
+@import url('components/messages.css');
+
+/* Feature Styles - Page-Specific Features */
+@import url('features/audio-player.css');
+@import url('features/segments.css');
+@import url('features/edit-mode.css');
+@import url('features/speaker-manager.css');
+@import url('features/batch-jobs.css');
+@import url('features/file-modal.css');
+@import url('features/audit-log.css');
+
+/* Animations and Keyframes */
+@import url('animations/keyframes.css');
+
+/* Responsive Design - Mobile and Tablet */
+@import url('responsive.css');

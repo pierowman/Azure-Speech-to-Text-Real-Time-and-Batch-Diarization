@@ -1,0 +1,395 @@
+@{
+    ViewData["Title"] = "Speech to Text with Diarization";
+}
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-10 offset-md-1">
+            <h1 class="mb-4">Azure Speech to Text with Diarization</h1>
+            
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">Upload Audio File(s)</h5>
+                    
+                    <!-- Mode Selector -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Transcription Mode</label>
+                        <div class="btn-group w-100" role="group" aria-label="Transcription mode">
+                            <input type="radio" class="btn-check" name="transcriptionMode" 
+                                   id="modeRealTime" value="realtime" checked autocomplete="off">
+                            <label class="btn btn-outline-primary py-3" for="modeRealTime">
+                                <i class="bi bi-lightning-charge-fill fs-4 d-block mb-2"></i>
+                                <strong>Real-Time</strong>
+                                <small class="d-block text-muted">Quick results</small>
+                            </label>
+                            
+                            @if (ViewData["EnableBatchTranscription"] as bool? ?? true)
+                            {
+                                <input type="radio" class="btn-check" name="transcriptionMode" 
+                                       id="modeBatch" value="batch" autocomplete="off">
+                                <label class="btn btn-outline-primary py-3" for="modeBatch">
+                                    <i class="bi bi-collection-fill fs-4 d-block mb-2"></i>
+                                    <strong>Batch</strong>
+                                    <small class="d-block text-muted">Large files</small>
+                                </label>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Real-Time Form -->
+                    <form id="realTimeForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="audioFileRealTime" class="form-label">Select Audio File</label>
+                            <input class="form-control" type="file" id="audioFileRealTime" 
+                                   name="audioFile" accept="@string.Join(",", ViewData["RealTimeAllowedExtensions"] as string[] ?? new[] { ".wav" })" required>
+                            <div class="form-text" id="realTimeHelpText">
+                                <i class="bi bi-info-circle"></i>
+                                <span id="realTimeRules">Loading validation rules...</span>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="realTimeSubmitBtn">
+                            <i class="bi bi-play-fill"></i> <span id="realTimeSubmitText">Transcribe Now</span>
+                            <span id="realTimeSubmitSpinner" class="spinner-border spinner-border-sm ms-2 d-none"></span>
+                        </button>
+                    </form>
+
+                    <!-- Batch Form -->
+                    @if (ViewData["EnableBatchTranscription"] as bool? ?? true)
+                    {
+                        <form id="batchForm" class="d-none" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="audioFilesBatch" class="form-label">Select Audio Files</label>
+                                <input class="form-control" type="file" id="audioFilesBatch" 
+                                       name="audioFiles" accept="@string.Join(",", ViewData["BatchAllowedExtensions"] as string[] ?? new[] { ".wav", ".mp3", ".flac", ".ogg" })" multiple required>
+                                <div class="form-text" id="batchHelpText">
+                                    <i class="bi bi-info-circle"></i>
+                                    <span id="batchRules">Loading validation rules...</span>
+                                </div>
+                                <div id="filesList" class="mt-2"></div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="batchJobName" class="form-label">Job Name (optional)</label>
+                                <input type="text" class="form-control" id="batchJobName" name="jobName"
+                                       placeholder="e.g., Board Meeting 2024-01-15" maxlength="100">
+                                <div class="form-text">Give your batch job a memorable name for easy identification</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="locale" class="form-label">
+                                    <i class="bi bi-translate"></i> Language / Locale
+                                </label>
+                                <select class="form-select" id="locale" name="locale" data-default-locale="@(ViewData["DefaultLocale"] ?? "en-US")">
+                                    <option value="">Loading languages...</option>
+                                </select>
+                                <div class="form-text">Select the language spoken in your audio files</div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="minSpeakers" class="form-label">
+                                        <i class="bi bi-person"></i> Minimum Speakers
+                                    </label>
+                                    <select class="form-select" id="minSpeakers" name="minSpeakers">
+                                        @for (int i = 1; i <= 10; i++)
+                                        {
+                                            var isSelected = i == (ViewData["DefaultMinSpeakers"] as int? ?? 2);
+                                            <option value="@i" selected="@isSelected">@i speaker@(i > 1 ? "s" : "")</option>
+                                        }
+                                    </select>
+                                    <div class="form-text">Expected minimum number of speakers</div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="maxSpeakers" class="form-label">
+                                        <i class="bi bi-people"></i> Maximum Speakers
+                                    </label>
+                                    <select class="form-select" id="maxSpeakers" name="maxSpeakers">
+                                        @for (int i = 1; i <= 10; i++)
+                                        {
+                                            var isSelected = i == (ViewData["DefaultMaxSpeakers"] as int? ?? 3);
+                                            <option value="@i" selected="@isSelected">@i speaker@(i > 1 ? "s" : "")</option>
+                                        }
+                                    </select>
+                                    <div class="form-text">Expected maximum number of speakers</div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-lightbulb"></i>
+                                <strong>Speaker Detection Tip:</strong> 
+                                Set accurate min/max speaker values for better diarization results. 
+                                For interviews use 2-2, for small meetings use 2-3, for large meetings use 2-10.
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary" id="batchSubmitBtn">
+                                <i class="bi bi-upload"></i> <span id="batchSubmitText">Submit Batch Job</span>
+                                <span id="batchSubmitSpinner" class="spinner-border spinner-border-sm ms-2 d-none"></span>
+                            </button>
+                        </form>
+                    }
+
+                </div>
+            </div>
+
+            <div id="progressSection" class="alert alert-info mt-3 d-none" role="alert">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div>
+                                <strong id="progressMainMessage">Processing your audio file...</strong>
+                            </div>
+                        </div>
+                        
+                        <!-- File Information -->
+                        <div id="progressFileInfo" class="small text-muted mb-2 d-none">
+                            <i class="bi bi-file-earmark-music"></i> 
+                            <span id="progressFileName"></span>
+                            <span id="progressFileSize" class="ms-2"></span>
+                            <span id="progressFileDuration" class="ms-2"></span>
+                        </div>
+                        
+                        <!-- Detailed Status Steps -->
+                        <div id="progressSteps" class="small d-none">
+                            <div id="stepUpload" class="mb-1">
+                                <i class="bi bi-circle step-icon text-muted"></i>
+                                <span class="step-text">Uploading file...</span>
+                            </div>
+                            <div id="stepConnect" class="mb-1">
+                                <i class="bi bi-circle step-icon text-muted"></i>
+                                <span class="step-text">Connecting to Azure Speech Service...</span>
+                            </div>
+                            <div id="stepAnalyze" class="mb-1">
+                                <i class="bi bi-circle step-icon text-muted"></i>
+                                <span class="step-text">Analyzing audio and detecting speakers...</span>
+                            </div>
+                            <div id="stepTranscribe" class="mb-1">
+                                <i class="bi bi-circle step-icon text-muted"></i>
+                                <span class="step-text">Transcribing speech with diarization...</span>
+                                <div id="segmentCounter" class="ms-4 text-muted d-none">
+                                    <small>Processed <span id="segmentCount">0</span> segments</small>
+                                </div>
+                            </div>
+                            <div id="stepFinalize" class="mb-1">
+                                <i class="bi bi-circle step-icon text-muted"></i>
+                                <span class="step-text">Finalizing transcription...</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Progress Bar (optional, for estimated time) -->
+                        <div id="progressBar" class="progress mt-3 d-none" style="height: 6px;">
+                            <div id="progressBarInner" class="progress-bar progress-bar-striped progress-bar-animated" 
+                                 role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger ms-3" id="cancelTranscriptionBtn">
+                        <i class="bi bi-x-circle"></i> Cancel
+                    </button>
+                </div>
+            </div>
+
+            <div id="errorSection" class="alert alert-danger mt-3 d-none" role="alert">
+                <strong id="errorLabel">Error:</strong> <span id="errorMessage"></span>
+            </div>
+
+            <div id="successSection" class="alert alert-success mt-3 d-none" role="alert">
+                <strong>Success!</strong> Transcription completed.
+            </div>
+
+            <div id="audioPlayerSection" class="mt-4 d-none">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Audio Playback</h5>
+                    </div>
+                    <div class="card-body">
+                        <audio id="audioPlayer" controls class="w-100" preload="auto">
+                            Your browser does not support the audio element.
+                        </audio>
+                        <div class="mt-2">
+                            <small class="text-muted">
+                                <i class="bi bi-info-circle"></i> 
+                                The transcript below will highlight automatically as the audio plays. Click to edit.
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="resultsSection" class="mt-4 d-none">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white d-flex justify-content-between align-items-center flex-wrap">
+                        <h5 class="mb-0">Transcription Results</h5>
+                        <div class="d-flex gap-2 align-items-center flex-wrap mt-2 mt-md-0">
+                            <button type="button" class="btn btn-sm btn-secondary" id="manageSpeakersBtn" title="Manage Speakers">
+                                <i class="bi bi-people"></i> Manage Speakers
+                            </button>
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-sm btn-light" id="downloadGoldenRecordBtn" title="Download Original Record (JSON)">
+                                    <i class="bi bi-shield-check"></i> Original Record
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" id="downloadReadableBtn" title="Download Transcribed Text (Word Document)">
+                                    <i class="bi bi-file-earmark-text"></i> Transcribed Text
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" id="downloadWithTrackingBtn" title="Download with Change Auditing (Word Document)">
+                                    <i class="bi bi-file-earmark-diff"></i> With Auditing
+                                </button>
+                                <button type="button" class="btn btn-sm btn-light" id="downloadAuditLogBtn" title="Download Edit History (Word Document)">
+                                    <i class="bi bi-clock-history"></i> Audit Log
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <ul class="nav nav-tabs mb-3" id="resultTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="segments-tab" data-bs-toggle="tab" data-bs-target="#segments" type="button" role="tab">
+                                    Speaker Segments
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="full-tab" data-bs-toggle="tab" data-bs-target="#full" type="button" role="tab">
+                                    Full Transcript
+                                </button>
+                            </li>
+                            @if (ViewData["ShowTranscriptionJobsTab"] as bool? ?? false)
+                            {
+                                <li class="nav-item" role="presentation" id="jobs-tab-item">
+                                    <button class="nav-link" id="jobs-tab" data-bs-toggle="tab" data-bs-target="#jobs" type="button" role="tab">
+                                        <i class="bi bi-clock-history"></i> Transcription Jobs
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                        <div class="tab-content" id="resultTabsContent">
+                            <div class="tab-pane fade show active" id="segments" role="tabpanel">
+                                <div id="segmentsList" class="list-group"></div>
+                            </div>
+                            <div class="tab-pane fade" id="full" role="tabpanel">
+                                <pre id="fullTranscript" class="bg-light p-3 rounded" style="white-space: pre-wrap;"></pre>
+                            </div>
+                            @if (ViewData["ShowTranscriptionJobsTab"] as bool? ?? false)
+                            {
+                                <div class="tab-pane fade" id="jobs" role="tabpanel">
+                                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                                        <p class="text-muted mb-0">View and manage batch transcription jobs from Azure Speech Service</p>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="autoRefreshJobsCheckbox" title="Auto-refresh when jobs are running (configured interval)">
+                                                <label class="form-check-label small" for="autoRefreshJobsCheckbox">
+                                                    <i class="bi bi-arrow-repeat"></i> Auto-refresh
+                                                </label>
+                                            </div>
+                                            <button type="button" class="btn btn-sm btn-primary" id="refreshJobsBtn">
+                                                <i class="bi bi-arrow-clockwise"></i> Refresh
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div id="jobsLoadingSection" class="text-center py-5 d-none">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2 text-muted">Loading transcription jobs...</p>
+                                    </div>
+                                    <div id="jobsErrorSection" class="alert alert-warning d-none" role="alert">
+                                        <i class="bi bi-exclamation-triangle"></i> <span id="jobsErrorMessage"></span>
+                                    </div>
+                                    <div id="jobsEmptySection" class="text-center py-5 d-none">
+                                        <i class="bi bi-inbox" style="font-size: 3rem; color: #ccc;"></i>
+                                        <p class="mt-3 text-muted">No transcription jobs found</p>
+                                    </div>
+                                    <div id="jobsList" class="list-group"></div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Speaker Management Modal -->
+<div class="modal fade" id="speakerModal" tabindex="-1" aria-labelledby="speakerModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="speakerModalLabel"><i class="bi bi-people"></i> Manage Speakers</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Available Speakers</label>
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="speakersTable">
+                            <thead>
+                                <tr>
+                                    <th>Speaker</th>
+                                    <th>Segments</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="speakersTableBody">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="newSpeakerName" class="form-label fw-bold">Add New Speaker</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="newSpeakerName" placeholder="Enter speaker name">
+                        <button class="btn btn-primary" type="button" id="addSpeakerBtn">
+                            <i class="bi bi-plus-circle"></i> Add
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reassign Speaker Modal -->
+<div class="modal fade" id="reassignModal" tabindex="-1" aria-labelledby="reassignModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="reassignModalLabel"><i class="bi bi-arrow-left-right"></i> Reassign Speaker</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Reassign all segments from <strong id="reassignFromSpeaker"></strong> to:</p>
+                <div class="mb-3">
+                    <label for="reassignToSpeaker" class="form-label">Select New Speaker</label>
+                    <select class="form-select" id="reassignToSpeaker">
+                    </select>
+                </div>
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> This will update all <span id="reassignSegmentCount"></span> segment(s) assigned to this speaker.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmReassignBtn">
+                    <i class="bi bi-check-circle"></i> Confirm Reassign
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Configuration from server
+        window.appConfig = window.appConfig || {};
+        window.appConfig.batchJobAutoRefreshSeconds = @(ViewData["BatchJobAutoRefreshSeconds"] ?? 60);
+    </script>
+    <script src="~/js/transcription.js" asp-append-version="true"></script>
+    <script src="~/js/transcription-progress.js" asp-append-version="true"></script>
+    <script src="~/js/transcription-jobs.js" asp-append-version="true"></script>
+    <script src="~/js/transcription-mode-selector.js" asp-append-version="true"></script>
+}

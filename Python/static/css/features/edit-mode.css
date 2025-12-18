@@ -1,0 +1,185 @@
+/* Edit Mode Controls */
+.edit-mode-controls {
+    background: var(--gray-50);
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 30px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.edit-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Audit Log Section */
+.audit-log-section {
+    display: none;
+    margin-top: 30px;
+    padding: 20px;
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+}
+
+.audit-log-section.show {
+    display: block;
+}
+
+.audit-log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.audit-log-header h3 {
+    color: var(--primary-color);
+    margin: 0;
+}
+
+/* Base audit entry styles (initial transcription info) */
+.audit-entry {
+    background: var(--white);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--primary-color);
+    line-height: 1.6;
+}
+
+/* Edit entry styles (actual edits) */
+.audit-entry.edit-entry {
+    background: var(--white);
+    border-left: 4px solid #667eea;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.audit-entry-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.audit-entry-details {
+    color: var(--gray-700);
+}
+
+.audit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.audit-header strong {
+    color: #667eea;
+    font-size: 1rem;
+}
+
+.audit-number {
+    background: var(--primary-color);
+    color: var(--white);
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.audit-action {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.audit-time {
+    color: var(--gray-500);
+    font-size: 0.85rem;
+}
+
+.audit-details {
+    margin-top: 10px;
+}
+
+.audit-meta {
+    color: var(--gray-600);
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+    padding: 8px;
+    background: var(--gray-50);
+    border-radius: var(--radius-sm);
+}
+
+.audit-change {
+    margin-top: 10px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    background: var(--gray-50);
+}
+
+.audit-change.text-change {
+    background: #f9f9ff;
+    border: 1px solid #e0e0f5;
+}
+
+.audit-change.speaker-change {
+    background: #fff9e6;
+    border: 1px solid #ffe0b2;
+}
+
+.audit-change strong {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--gray-700);
+}
+
+.old-value {
+    color: #d32f2f;
+    background: #ffebee;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    display: inline-block;
+    margin: 4px 0;
+    font-weight: 500;
+}
+
+.new-value {
+    color: #388e3c;
+    background: #e8f5e9;
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    display: inline-block;
+    margin: 4px 0;
+    font-weight: 500;
+}
+
+.audit-change.text-change > div {
+    margin: 8px 0;
+}
+
+.audit-change.text-change .old-value,
+.audit-change.text-change .new-value {
+    display: block;
+    padding: 8px 12px;
+    margin: 8px 0;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.audit-old-text {
+    color: #d32f2f;
+    background: #ffebee;
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+}
+
+.audit-new-text {
+    color: #388e3c;
+    background: #e8f5e9;
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+}

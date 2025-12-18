@@ -1,0 +1,245 @@
+/* Card Components */
+.stat-card {
+    background: var(--primary-gradient);
+    padding: 25px;
+    border-radius: var(--radius-xl);
+    text-align: center;
+    color: var(--white);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Job Cards */
+.job-card {
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 15px;
+    border-left: 4px solid var(--primary-color);
+    transition: all var(--transition-normal);
+    cursor: pointer;
+}
+
+.job-card:hover {
+    background: var(--gray-100);
+    transform: translateX(3px);
+    box-shadow: var(--shadow-sm);
+}
+
+.job-card.expanded {
+    border-left-color: var(--primary-dark);
+    background: var(--white);
+    box-shadow: var(--shadow-md);
+}
+
+.job-card.loading-complete {
+    animation: slideIn 0.4s ease-out;
+}
+
+.job-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    gap: 15px;
+}
+
+.job-card-title {
+    flex: 1;
+}
+
+.job-card-title h3 {
+    margin: 0 0 5px 0;
+    color: var(--gray-800);
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+}
+
+.job-card-title .job-id {
+    font-size: 0.85rem;
+    color: var(--gray-600);
+    font-family: monospace;
+    margin-top: 3px;
+}
+
+.job-status {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.job-status.notstarted {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.job-status.running {
+    background: #fff3cd;
+    color: #ff9800;
+    animation: pulse-status 2s ease-in-out infinite;
+}
+
+.job-status.succeeded {
+    background: #e8f5e9;
+    color: var(--success-color);
+}
+
+.job-status.failed {
+    background: #ffebee;
+    color: var(--error-color);
+}
+
+.job-metadata {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.job-metadata-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.job-metadata-label {
+    font-size: 0.8rem;
+    color: var(--gray-600);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.job-metadata-value {
+    font-size: 0.95rem;
+    color: var(--gray-800);
+}
+
+.job-details {
+    display: none;
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--gray-200);
+}
+
+.job-card.expanded .job-details {
+    display: block;
+    animation: slideDown var(--transition-normal) ease;
+}
+
+/* Skeleton Loading Cards */
+.job-card-skeleton {
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 15px;
+    border-left: 4px solid var(--gray-300);
+    animation: fadeIn var(--transition-normal) ease-in;
+}
+
+.skeleton-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.skeleton-title {
+    flex: 1;
+}
+
+.skeleton-line {
+    background: linear-gradient(90deg, var(--gray-300) 25%, var(--gray-100) 50%, var(--gray-300) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: var(--radius-sm);
+    height: 16px;
+    margin-bottom: 8px;
+}
+
+.skeleton-line.title {
+    height: 24px;
+    width: 60%;
+    margin-bottom: 8px;
+}
+
+.skeleton-line.subtitle {
+    height: 14px;
+    width: 40%;
+}
+
+.skeleton-line.status {
+    height: 28px;
+    width: 100px;
+    border-radius: 14px;
+}
+
+.skeleton-line.label {
+    height: 12px;
+    width: 70%;
+}
+
+.skeleton-line.value {
+    height: 16px;
+    width: 90%;
+}
+
+.skeleton-metadata {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.skeleton-metadata-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Other Card Styles */
+.batch-job-details {
+    background: var(--gray-50);
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    border-left: 4px solid var(--primary-color);
+}
+
+.batch-job-details p {
+    margin: 10px 0;
+}
+
+.batch-job-details .status-badge {
+    background: var(--primary-color);
+    color: var(--white);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.batch-job-details .file-list {
+    margin: 10px 0 10px 20px;
+    list-style: disc;
+}
+
+.batch-job-details .file-list li {
+    margin: 5px 0;
+    color: var(--gray-700);
+}

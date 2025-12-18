@@ -1,0 +1,5 @@
+# Azure App Service Startup Command
+# This file tells Azure how to start your Django application
+
+# Production startup with Gunicorn
+gunicorn --bind=0.0.0.0:8000 --workers=4 --timeout=600 speechtotext_project.wsgi:application

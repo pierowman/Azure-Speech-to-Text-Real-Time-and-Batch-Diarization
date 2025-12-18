@@ -1,0 +1,247 @@
+/* Audio Player Styles */
+.audio-player-container {
+    background: var(--primary-gradient);
+    border-radius: var(--radius-xl);
+    padding: 25px;
+    margin-bottom: 30px;
+    color: var(--white);
+    box-shadow: 0 5px 20px rgba(102, 126, 234, 0.3);
+}
+
+.audio-player-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.audio-player-header h3 {
+    font-size: 1.3rem;
+    margin: 0;
+}
+
+.playback-speed-control {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-md);
+}
+
+.audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.control-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid var(--white);
+    color: var(--white);
+    width: 50px;
+    height: 50px;
+    border-radius: var(--radius-full);
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    padding: 0;
+}
+
+.control-btn:hover {
+    background: var(--white);
+    color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+.control-btn.primary {
+    width: 60px;
+    height: 60px;
+    font-size: 2rem;
+}
+
+.skip-btn {
+    font-size: 1.2rem;
+}
+
+.time-display {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--gap-md);
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+/* Progress Bar */
+.progress-container {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    margin-bottom: 15px;
+}
+
+.progress-bar {
+    position: absolute;
+    height: 100%;
+    background: var(--white);
+    border-radius: var(--radius-sm);
+    width: 0%;
+    transition: width 0.1s linear;
+}
+
+.progress-handle {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: var(--white);
+    border-radius: var(--radius-full);
+    top: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    cursor: grab;
+    left: 0%;
+}
+
+.progress-handle:active {
+    cursor: grabbing;
+}
+
+/* Volume Control */
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-md);
+}
+
+.volume-slider {
+    width: 100px;
+    height: 6px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-sm);
+    outline: none;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--white);
+    cursor: pointer;
+    border-radius: var(--radius-full);
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--white);
+    cursor: pointer;
+    border-radius: var(--radius-full);
+    border: none;
+}
+
+/* Keyboard Shortcuts Display */
+.keyboard-shortcuts {
+    text-align: center;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+}
+
+/* Segment Counter in Audio Player */
+.segment-counter {
+    margin-top: 30px;
+    padding: 20px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    opacity: 0;
+    transform: scale(0.9);
+    transition: all var(--transition-normal) ease;
+}
+
+.segment-counter.show {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.segment-count {
+    font-size: 3rem;
+    font-weight: bold;
+    color: var(--white);
+    margin-bottom: 10px;
+}
+
+.segment-count .number {
+    display: inline-block;
+    animation: pulse 0.5s ease;
+}
+
+.segment-label {
+    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Progress Stages */
+.progress-stages {
+    margin-top: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.progress-stage {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-lg);
+    opacity: 0.5;
+    transition: all var(--transition-normal) ease;
+}
+
+.progress-stage.active {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    transform: scale(1.02);
+}
+
+.progress-stage.completed {
+    opacity: 1;
+    background: rgba(0, 200, 81, 0.2);
+}
+
+.stage-icon {
+    font-size: 2rem;
+    min-width: 50px;
+    text-align: center;
+}
+
+.stage-text {
+    flex: 1;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.progress-stage.completed .stage-icon::after {
+    content: ' ?';
+    color: #00C851;
+    font-size: 1.5rem;
+}
+
+.progress-stage.active .stage-text {
+    animation: pulse-text 1.5s ease-in-out infinite;
+}

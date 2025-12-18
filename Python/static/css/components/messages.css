@@ -1,0 +1,132 @@
+/* Message & Alert Styles */
+.error, .success, .info {
+    padding: 15px 20px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 20px;
+    display: none;
+    animation: slideIn var(--transition-normal) ease;
+}
+
+.error {
+    background: #ffebee;
+    border-left: 4px solid var(--error-color);
+    color: #c62828;
+}
+
+.success {
+    background: #e8f5e9;
+    border-left: 4px solid var(--success-color);
+    color: #2e7d32;
+}
+
+.info {
+    background: #e3f2fd;
+    border-left: 4px solid var(--info-color);
+    color: #1565c0;
+}
+
+.error.show, .success.show, .info.show {
+    display: block;
+}
+
+.info-message {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+    border-radius: var(--radius-md);
+    padding: 15px;
+    color: #1565c0;
+}
+
+.job-error-message {
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+    border-radius: var(--radius-md);
+    padding: 12px;
+    margin-top: 10px;
+    color: #c62828;
+    font-size: 0.9rem;
+}
+
+/* Loading Spinner */
+.loading {
+    display: none;
+    text-align: center;
+    padding: 40px;
+    background: var(--primary-gradient);
+    border-radius: var(--radius-xl);
+    color: var(--white);
+    margin-bottom: 30px;
+}
+
+.loading.show {
+    display: block;
+}
+
+.spinner {
+    width: 60px;
+    height: 60px;
+    border: 6px solid rgba(255, 255, 255, 0.3);
+    border-top-color: var(--white);
+    border-radius: var(--radius-full);
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+.loading p {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 10px 0;
+}
+
+.loading small {
+    display: block;
+    opacity: 0.9;
+    margin-top: 10px;
+}
+
+.loading-progress {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 15px;
+    background: #e3f2fd;
+    border-radius: var(--radius-lg);
+    margin-bottom: 20px;
+    font-size: 0.95rem;
+    color: #1976d2;
+    font-weight: 600;
+}
+
+.loading-progress .spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 3px solid #bbdefb;
+    border-top-color: #1976d2;
+    border-radius: var(--radius-full);
+    animation: spin 1s linear infinite;
+    margin-right: 10px;
+}
+
+/* Empty State */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--gray-500);
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 15px;
+}
+
+.empty-state-text {
+    font-size: 1.1rem;
+    color: var(--gray-600);
+}
+
+/* Progress Indicators */
+.animated-dots::after {
+    content: '...';
+    display: inline-block;
+    animation: dots 1.5s steps(4, end) infinite;
+}

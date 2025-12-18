@@ -1,0 +1,64 @@
+/* CSS Custom Properties */
+:root {
+    /* Colors */
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --primary-color: #667eea;
+    --primary-dark: #764ba2;
+    --success-color: #4caf50;
+    --success-dark: #45a049;
+    --error-color: #f44336;
+    --error-dark: #da190b;
+    --warning-color: #ffc107;
+    --warning-dark: #e0a800;
+    --info-color: #2196f3;
+    
+    /* Neutral Colors */
+    --white: #ffffff;
+    --black: #000000;
+    --gray-50: #f8f9fa;
+    --gray-100: #e9ecef;
+    --gray-200: #e0e0e0;
+    --gray-300: #ddd;
+    --gray-400: #ccc;
+    --gray-500: #999;
+    --gray-600: #666;
+    --gray-700: #555;
+    --gray-800: #333;
+    --gray-900: #212529;
+    
+    /* Spacing */
+    --gap-xs: 5px;
+    --gap-sm: 8px;
+    --gap-md: 10px;
+    --gap-lg: 15px;
+    --gap-xl: 20px;
+    --gap-2xl: 30px;
+    
+    /* Border Radius */
+    --radius-sm: 3px;
+    --radius-md: 5px;
+    --radius-lg: 8px;
+    --radius-xl: 10px;
+    --radius-2xl: 12px;
+    --radius-full: 50%;
+    
+    /* Transitions */
+    --transition-fast: 0.2s;
+    --transition-normal: 0.3s;
+    --transition-slow: 0.4s;
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.1);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
+    --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.3);
+    --shadow-xl: 0 20px 60px rgba(0, 0, 0, 0.3);
+    
+    /* Z-index layers */
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 9998;
+    --z-modal: 9999;
+    --z-popover: 10000;
+    --z-tooltip: 10001;
+}

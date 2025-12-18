@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES6",
+    "module": "commonjs",
+    "allowJs": true,
+    "checkJs": false,
+    "jsx": "preserve",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node"
+  },
+  "exclude": [
+    "node_modules",
+    "wwwroot/lib",
+    "**/node_modules/*",
+    "bin",
+    "obj"
+  ],
+  "include": [
+    "wwwroot/js/**/*.js",
+    "Views/**/*.cshtml"
+  ]
+}

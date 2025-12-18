@@ -1,0 +1,38 @@
+/* Audit Log Feature Styles */
+/* Additional audit log styles specific to the feature */
+
+/* These styles extend the edit-mode.css audit styles */
+/* Include only feature-specific audit styles here that aren't in edit-mode.css */
+
+/* Audit Entry Comparison Layouts */
+.audit-entry .comparison-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.audit-entry .comparison-column {
+    padding: 10px;
+    border-radius: var(--radius-md);
+}
+
+.audit-entry .comparison-column.original {
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+}
+
+.audit-entry .comparison-column.edited {
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+}
+
+.audit-entry .comparison-column-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+
+.audit-entry .comparison-column-text {
+    line-height: 1.6;
+}

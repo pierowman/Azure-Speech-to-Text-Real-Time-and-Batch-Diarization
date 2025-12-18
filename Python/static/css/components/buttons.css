@@ -1,0 +1,140 @@
+/* Button Styles */
+
+button {
+    background: var(--primary-gradient);
+    color: var(--white);
+    padding: 12px 30px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform var(--transition-fast);
+    font-weight: 600;
+}
+
+button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Button variants */
+.btn-primary {
+    background: var(--primary-gradient);
+    color: var(--white);
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:disabled {
+    background: var(--gray-400);
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #f5f5f5;
+    color: var(--gray-800);
+    border: 1px solid var(--gray-300);
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.btn-secondary:hover {
+    background: var(--gray-200);
+}
+
+/* Speed buttons */
+.speed-btn {
+    background: rgba(255, 255, 255, 0.2);
+    color: var(--white);
+    padding: 5px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.speed-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.speed-btn.active {
+    background: var(--white);
+    color: var(--primary-color);
+    border-color: var(--white);
+}
+
+/* Refresh button */
+.refresh-btn {
+    background: var(--primary-gradient);
+    color: var(--white);
+    padding: 10px 20px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-weight: 600;
+}
+
+.refresh-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.refresh-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Speaker action buttons */
+.rename-btn {
+    background: var(--primary-color);
+    color: var(--white);
+}
+
+.rename-btn:hover {
+    background: #5568d3;
+    transform: scale(1.05);
+}
+
+.reassign-btn {
+    background: var(--warning-color);
+    color: var(--gray-800);
+}
+
+.reassign-btn:hover {
+    background: var(--warning-dark);
+    transform: scale(1.05);
+}
+
+.delete-btn {
+    background: var(--error-color);
+    color: var(--white);
+}
+
+.delete-btn:hover {
+    background: var(--error-dark);
+    transform: scale(1.05);
+}

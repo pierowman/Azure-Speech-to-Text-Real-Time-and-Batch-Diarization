@@ -1,0 +1,261 @@
+/* Speaker Manager Styles */
+.speaker-manager-section {
+    margin-bottom: 30px;
+}
+
+.speaker-manager-section h3 {
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    font-size: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+}
+
+.speaker-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-md);
+    margin-bottom: 15px;
+}
+
+.speaker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 15px;
+    background: var(--gray-50);
+    border-radius: var(--radius-lg);
+    border-left: 4px solid var(--primary-color);
+    transition: all var(--transition-fast);
+}
+
+.speaker-item:hover {
+    background: var(--gray-100);
+    transform: translateX(3px);
+}
+
+.speaker-info {
+    flex: 1;
+}
+
+.speaker-name {
+    font-weight: 600;
+    color: var(--gray-800);
+    font-size: 1.1rem;
+}
+
+.speaker-stats {
+    font-size: 0.85rem;
+    color: var(--gray-600);
+    margin-top: 3px;
+}
+
+.speaker-actions {
+    display: flex;
+    gap: var(--gap-sm);
+}
+
+.speaker-actions button {
+    padding: 6px 12px;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 600;
+    transition: all var(--transition-fast);
+}
+
+/* Reassign Speaker Popup Styles */
+.reassign-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+.reassign-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    max-width: 500px;
+    width: 90%;
+    z-index: 10001;
+    animation: slideIn 0.3s ease-out;
+}
+
+.reassign-popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.reassign-popup-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reassign-popup-close {
+    background: none;
+    border: none;
+    font-size: 28px;
+    line-height: 1;
+    color: #666;
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+}
+
+.reassign-popup-close:hover {
+    background: #f5f5f5;
+    color: #333;
+}
+
+.reassign-popup-content {
+    padding: 24px;
+}
+
+.reassign-popup-content p {
+    margin: 0 0 16px 0;
+    color: #555;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.reassign-popup-content strong {
+    color: #333;
+    font-weight: 600;
+}
+
+.reassign-select {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 1rem;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.reassign-select:hover {
+    border-color: #667eea;
+}
+
+.reassign-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.reassign-popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e0e0e0;
+    background: #f9f9f9;
+    border-radius: 0 0 12px 12px;
+}
+
+.reassign-popup-actions button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.reassign-popup-actions .btn-cancel {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.reassign-popup-actions .btn-cancel:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.reassign-popup-actions .btn-confirm {
+    background: #667eea;
+    color: white;
+}
+
+.reassign-popup-actions .btn-confirm:hover {
+    background: #5568d3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.reassign-popup-actions .btn-confirm:active {
+    transform: translateY(0);
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -48%);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%);
+    }
+}
+
+/* Responsive styles */
+@media (max-width: 600px) {
+    .reassign-popup {
+        width: 95%;
+        max-width: none;
+    }
+    
+    .reassign-popup-header {
+        padding: 16px 20px;
+    }
+    
+    .reassign-popup-content {
+        padding: 20px;
+    }
+    
+    .reassign-popup-actions {
+        padding: 12px 20px;
+        flex-direction: column;
+    }
+    
+    .reassign-popup-actions button {
+        width: 100%;
+    }
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>9b407a8e-155e-4bb1-b5e5-fa4f818d5aa5</UserSecretsId>
+    
+    <!-- Disable TypeScript compilation (using jsconfig.json instead) -->
+    <TypeScriptCompileBlocked>true</TypeScriptCompileBlocked>
+    <!-- Disable TypeScript tools version check to avoid warning -->
+    <TypeScriptToolsVersion></TypeScriptToolsVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Identity" Version="1.17.0" />
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.26.0" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.3.0" />
+    <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.46.0" />
+  </ItemGroup>
+
+</Project>

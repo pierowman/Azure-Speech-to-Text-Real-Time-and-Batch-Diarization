@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Azure Speech-to-Text with Diarization</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    
+    <!-- Progress Stages Styles -->
+    <style>
+        /* Progress Stages Container */
+        .progress-stages {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Individual Progress Stage */
+        .progress-stage {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            opacity: 0.5;
+            transition: all 0.3s ease;
+        }
+
+        /* Active Stage (Currently Processing) */
+        .progress-stage.active {
+            opacity: 1;
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            transform: scale(1.02);
+        }
+
+        /* Completed Stage (Finished) */
+        .progress-stage.completed {
+            opacity: 1;
+            background: rgba(0, 200, 81, 0.2);
+        }
+
+        /* Stage Icon */
+        .stage-icon {
+            font-size: 2rem;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        /* Stage Text */
+        .stage-text {
+            flex: 1;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+
+        /* Checkmark for Completed Stages */
+        .progress-stage.completed .stage-icon::after {
+            content: ' ✅';  /* Green checkmark emoji - re-saved with UTF-8 encoding */
+            color: #00C851;
+            font-size: 1.5rem;
+        }
+
+        /* Pulse Animation for Active Stage Text */
+        .progress-stage.active .stage-text {
+            animation: pulse-text 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-text {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Speaker Manager Modal -->
+    <div class="modal-overlay" id="speakerModalOverlay" onclick="closeSpeakerManager()"></div>
+    <div class="modal" id="speakerModal">
+        <div class="modal-header">
+            <h2>👥 Manage Speakers</h2>
+            <button class="modal-close" onclick="closeSpeakerManager()">×</button>
+        </div>
+        <div class="modal-content">
+            <div class="speaker-manager-section">
+                <h3>📋 Current Speakers</h3>
+                <div class="speaker-list" id="speakerList"></div>
+            </div>
+
+            <div class="speaker-manager-section">
+                <h3>➕ Add New Speaker</h3>
+                <div class="add-speaker-form">
+                    <input type="text" id="newSpeakerName" placeholder="Enter speaker name (e.g., John Smith)" />
+                    <button onclick="addNewSpeaker()">Add Speaker</button>
+                </div>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="close-modal-btn" onclick="closeSpeakerManager()">Close</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>🎤 Azure Speech-to-Text</h1>
+            <p>Real-time and Batch transcription with speaker diarization</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Tab Navigation -->
+            <div class="tab-nav" role="tablist" aria-label="Transcription mode selection">
+                <button class="tab-btn active" onclick="switchTab('realtime')" 
+                        role="tab" aria-selected="true" aria-controls="realtime-tab" 
+                        id="tab-realtime">🎙️ Real-time Transcription</button>
+                <button class="tab-btn" onclick="switchTab('batch')" 
+                        role="tab" aria-selected="false" aria-controls="batch-tab" 
+                        id="tab-batch">📦 Batch Transcription</button>
+            </div>
+
+            <!-- Real-time Tab -->
+            <div id="realtime-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-realtime">
+                <div class="upload-section">
+                    <h2>Upload Audio File (Real-time)</h2>
+                    <form id="uploadForm">
+                        <div class="form-group">
+                            <label for="audioFile">Select Audio File (WAV format recommended)</label>
+                            <input type="file" id="audioFile" name="audioFile" accept=".wav" required>
+                            <small>Max file size: 100 MB | Supported: WAV | Language: English (en-US) only</small>
+                        </div>
+
+                        <button type="submit" id="transcribeBtn" data-original-text="🎯 Start Real-time Transcription">🎯 Start Real-time Transcription</button>
+                    </form>
+                </div>
+
+                <div class="error" id="errorMessage"></div>
+                <div class="success" id="successMessage"></div>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p id="loadingMainText">🎯 Processing Your Audio...</p>
+                    <small>Transcribing with speaker diarization. This may take a few moments depending on file size.</small>
+                    <small style="margin-top: 15px; font-style: italic;">⏳ Please wait... do not close this window</small>
+                    
+                    <!-- Progress Stages -->
+                    <div class="progress-stages" id="progressStages">
+                        <div class="progress-stage" id="stage-upload">
+                            <div class="stage-icon">📤</div>
+                            <div class="stage-text">Uploading audio file<span class="animated-dots"></span></div>
+                        </div>
+                        <div class="progress-stage" id="stage-processing">
+                            <div class="stage-icon">⚙️</div>
+                            <div class="stage-text">Processing with Azure Speech Service<span class="animated-dots"></span></div>
+                        </div>
+                        <div class="progress-stage" id="stage-diarization">
+                            <div class="stage-icon">👥</div>
+                            <div class="stage-text">Identifying speakers<span class="animated-dots"></span></div>
+                        </div>
+                        <div class="progress-stage" id="stage-finalizing">
+                            <div class="stage-icon">✨</div>
+                            <div class="stage-text">Finalizing transcription<span class="animated-dots"></span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Segment Counter -->
+                    <div class="segment-counter" id="segmentCounter">
+                        <div class="segment-count">
+                            <span class="number" id="segmentCount">0</span>
+                        </div>
+                        <div class="segment-label">segments transcribed</div>
+                    </div>
+                </div>
+
+                <div class="results-section" id="resultsSection">
+                    <h2>📊 Transcription Results</h2>
+                    
+                    <!-- Audio Player -->
+                    <div class="audio-player-container" id="audioPlayerContainer" style="display: none;">
+                        <div class="audio-player-header">
+                            <h3>🎵 Audio Playback</h3>
+                            <div class="playback-speed-control">
+                                <span style="font-size: 0.9rem;">Speed:</span>
+                                <button class="speed-btn" onclick="setPlaybackSpeed(0.5)">0.5x</button>
+                                <button class="speed-btn active" onclick="setPlaybackSpeed(1)">1x</button>
+                                <button class="speed-btn" onclick="setPlaybackSpeed(1.5)">1.5x</button>
+                                <button class="speed-btn" onclick="setPlaybackSpeed(2)">2x</button>
+                            </div>
+                        </div>
+
+                        <div class="audio-controls">
+                            <button class="control-btn skip-btn" onclick="skipBackward()" title="Skip back 10s">⏪</button>
+                            <button class="control-btn primary" id="playPauseBtn" onclick="togglePlayPause()" title="Play/Pause (Space)">▶️</button>
+                            <button class="control-btn skip-btn" onclick="skipForward()" title="Skip forward 10s">⏩</button>
+                            <div class="time-display">
+                                <span id="currentTime">0:00</span>
+                                <span>/</span>
+                                <span id="totalTime">0:00</span>
+                            </div>
+                            <div class="volume-control" aria-label="Volume control">
+                                <span>🔊</span>
+                                <input type="range" class="volume-slider" id="volumeSlider" 
+                                       min="0" max="100" value="100" 
+                                       oninput="setVolume(this.value)"
+                                       aria-label="Volume control" 
+                                       title="Adjust audio volume (0-100%)">
+                            </div>
+                        </div>
+
+                        <div class="progress-container" id="progressContainer" 
+                             onmousedown="startSeeking(event)" ontouchstart="startSeeking(event)"
+                             role="slider" 
+                             aria-label="Audio progress" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100" 
+                             aria-valuenow="0"
+                             aria-valuetext="0:00 of 0:00"
+                             tabindex="0">
+                            <div class="progress-bar" id="progressBar"></div>
+                            <div class="progress-handle" id="progressHandle"></div>
+                        </div>
+
+                        <audio id="audioPlayer" style="display: none;"></audio>
+
+                        <div class="keyboard-shortcuts">
+                            💡 Keyboard: Space = Play/Pause | ← = Back 10s | → = Forward 10s | Click timestamps to jump
+                        </div>
+                    </div>
+
+                    <div class="stats-grid" id="statsGrid"></div>
+
+                    <!-- Edit Mode Controls -->
+                    <div class="edit-mode-controls">
+                        <div class="edit-mode-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="editModeToggle" onchange="toggleEditMode(this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span style="font-weight: 600; font-size: 1.1rem;">✏️ Edit Mode</span>
+                            <span style="color: #666; font-size: 0.9rem;">(Click segment text to edit inline)</span>
+                        </div>
+                        <div style="color: #666; font-size: 0.85rem; margin-top: 5px;">
+                            💡 Inline editing: Click segment text → Edit → Press Enter or click Save. All edits are tracked in the audit log.
+                        </div>
+                    </div>
+
+                    <div class="export-buttons">
+                        <button onclick="openSpeakerManager()" id="manageSpeakersBtn" style="background: #667eea; display: none;">👥 Manage Speakers</button>
+                        <button onclick="downloadOriginal()">📥 Download Original</button>
+                        <button onclick="downloadWord()">📄 Download Transcribed Text</button>
+                        <button onclick="copyToClipboard()">📋 Copy to Clipboard</button>
+                        <button onclick="downloadCombinedDocument()" id="downloadCombinedBtn" style="display: none;">📑 Download Full Report</button>
+                        <button onclick="downloadAuditLog()" id="downloadAuditBtn" style="display: none;">📜 Download Audit Log</button>
+                    </div>
+
+                    <div id="interactiveSegmentsHelper" style="background: #e8f5e9; padding: 12px; border-radius: 5px; margin-bottom: 20px; border-left: 4px solid #4caf50; display: none;">
+                        <strong>💡 Interactive Segments:</strong> Click any segment to play audio from that point. 
+                        Click timestamps to jump without auto-playing.
+                    </div>
+
+                    <div id="segments"></div>
+
+                    <!-- Audit Log Section -->
+                    <div class="audit-log-section" id="auditLogSection">
+                        <div class="audit-log-header">
+                            <h3>📜 Edit Audit Log</h3>
+                            <button onclick="toggleAuditLog()" style="padding: 8px 16px;">Hide Log</button>
+                        </div>
+                        <div id="auditLogEntries"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Batch Tab -->
+            <div id="batch-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-batch">
+                <!-- Create New Job Section -->
+                <div class="upload-section">
+                    <h2>➕ Create New Batch Transcription Job</h2>
+                    <form id="batchForm" autocomplete="off">
+                        <div class="form-group">
+                            <label for="batchAudioFiles">Select Audio Files (Multiple files supported)</label>
+                            <input type="file" id="batchAudioFiles" name="audioFiles" multiple 
+                                   accept=".wav,.mp3,.ogg,.flac,.opus,.m4a,.webm" required>
+                            <small>Max file size: 500 MB per file | Supported: WAV, MP3, OGG, FLAC, OPUS, M4A, WEBM</small>
+                            <div id="fileList" class="file-list" style="display: none;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="batchJobName">Job Name (Optional)</label>
+                            <input type="text" id="batchJobName" name="jobName" 
+                                   placeholder="e.g., Board Meeting 2024-01-15 (auto-generated if empty)" autocomplete="off">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="batchLocale">Language</label>
+                            <select id="batchLocale" name="locale">
+                                <option value="en-US">Loading languages...</option>
+                            </select>
+                            <small id="localeLoadError" style="display: none; color: #f44336;"></small>
+                        </div>
+
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="enableDiarization" name="enableDiarization" checked>
+                                <label for="enableDiarization" style="margin-bottom: 0;">Enable Speaker Diarization</label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Speaker Range</label>
+                            <div class="speaker-range">
+                                <div>
+                                    <label for="minSpeakers">Minimum Speakers</label>
+                                    <input type="number" id="minSpeakers" name="minSpeakers" 
+                                           min="1" max="20" value="2">
+                                </div>
+                                <div>
+                                    <label for="maxSpeakers">Maximum Speakers</label>
+                                    <input type="number" id="maxSpeakers" name="maxSpeakers" 
+                                           min="1" max="20" value="10">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" id="batchSubmitBtn" data-original-text="🚀 Submit Batch Job">🚀 Submit Batch Job</button>
+                    </form>
+                </div>
+
+                <div class="error" id="batchErrorMessage"></div>
+                <div class="success" id="batchSuccessMessage"></div>
+                <div class="info" id="batchInfoMessage"></div>
+
+                <div class="loading" id="batchLoading">
+                    <div class="spinner"></div>
+                    <p>🚀 Creating Batch Transcription Job...</p>
+                    <small>Uploading files and submitting to Azure Speech Service. Please wait...</small>
+                </div>
+
+                <div class="results-section" id="batchResultsSection">
+                    <h2>✅ Batch Job Created</h2>
+                    <div id="batchJobInfo"></div>
+                </div>
+
+                <!-- Job List Section -->
+                <div class="batch-jobs-section" style="margin-top: 40px;">
+                    <div class="batch-jobs-header">
+                        <h2>📋 Batch Transcription Jobs</h2>
+                        <div class="batch-jobs-controls">
+                            <div class="auto-refresh-control">
+                                <label class="toggle-switch" title="Auto-refresh job list">
+                                    <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh(this.checked)">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                                <span style="font-weight: 600; font-size: 0.9rem;">🔄 Auto-Refresh</span>
+                                <span id="autoRefreshStatus" style="color: #666; font-size: 0.85rem;"></span>
+                            </div>
+                            <button onclick="refreshJobList(true)" id="manualRefreshBtn" class="refresh-btn" title="Force refresh all jobs (including completed jobs to get fresh SAS tokens)">
+                                🔄 Refresh Jobs
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="loading" id="jobListLoading" style="display: none;">
+                        <div class="spinner"></div>
+                        <p>📥 Loading Jobs...</p>
+                    </div>
+                    
+                    <div id="jobListContainer" class="job-list-container">
+                        <div class="info-message" style="text-align: center; padding: 40px; color: #666;">
+                            <p style="font-size: 1.1rem; margin-bottom: 10px;">📂 Click "Refresh Now" to load batch jobs</p>
+                            <p style="font-size: 0.9rem;">Or enable auto-refresh to automatically update the list</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>&copy; 2024 Azure Speech-to-Text Application | Powered by Azure Cognitive Services</p>
+        </footer>
+    </div>
+
+    <!-- File Selection Modal -->
+    <div id="fileSelectionModal" class="file-modal" style="display: none;">
+        <div class="file-modal-content">
+            <div class="file-modal-header">
+                <h2>📁 Select Files to View</h2>
+                <span class="file-modal-close" onclick="closeFileSelectionModal()">&times;</span>
+            </div>
+            <div class="file-modal-body">
+                <p class="file-modal-instructions">
+                    Select one or more files to view. For multiple files, you can drag and drop to reorder them.
+                    The transcriptions will be concatenated in the order shown.
+                </p>
+                <div id="fileSelectionList" class="file-selection-list">
+                    <!-- Files will be populated here -->
+                </div>
+                <div class="file-modal-summary">
+                    <span id="selectedFileCount">0 files selected</span>
+                </div>
+            </div>
+            <div class="file-modal-footer">
+                <button class="btn-secondary" onclick="closeFileSelectionModal()">Cancel</button>
+                <button class="btn-primary" onclick="confirmFileSelection()" id="confirmFileSelectionBtn" disabled>
+                    View Selected Files
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Flask Template Variables -->
+    <script>
+        window.BATCH_JOB_AUTO_REFRESH_SECONDS = {{ batch_job_auto_refresh_seconds }};
+        window.DEFAULT_LOCALE = '{{ default_locale }}';
+    </script>
+
+    <!-- ES6 Module Imports -->
+    <script type="module">
+        import { initializeApp } from '{{ url_for("static", filename="js/app.js") }}';
+        import { setupForms } from '{{ url_for("static", filename="js/form-handlers.js") }}';
+        
+        // Initialize application on page load
+        window.addEventListener('load', () => {
+            console.log('🚀 Initializing application...');
+            initializeApp();
+            setupForms();
+            console.log('✅ Application initialized');
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,462 @@
+/* Transcription Segment Styles */
+.segment {
+    background: var(--gray-50);
+    padding: 12px 15px;
+    margin-bottom: 10px;
+    border-radius: var(--radius-md);
+    border-left: 4px solid var(--primary-color);
+    transition: all var(--transition-normal);
+    position: relative;
+    cursor: pointer;
+}
+
+.segment:hover:not(.editing) {
+    background: var(--gray-100);
+    box-shadow: var(--shadow-sm);
+    transform: translateX(3px);
+}
+
+.segment:hover:not(.editing)::before {
+    content: '\25B6';  /* Play triangle ? - using CSS Unicode escape */
+    position: absolute;
+    left: -20px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    opacity: 0.7;
+}
+
+.segment.active {
+    background: var(--primary-color);
+    color: var(--white);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.segment.active .speaker-name,
+.segment.active .segment-speaker-display {
+    color: var(--white);
+}
+
+.segment.active .timestamp,
+.segment.active .segment-timestamp,
+.segment.active .segment-time {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.segment.active .segment-text {
+    color: var(--white);
+}
+
+.segment.editing {
+    background: #fff3cd;
+    border-left: 4px solid var(--warning-color);
+    cursor: default !important;
+}
+
+.segment.editing:hover::before {
+    content: '\270E' !important;  /* Pen icon ? - using CSS Unicode escape */
+}
+
+.segment.edited {
+    border-right: 4px solid #00C851;
+    background: #f1f8f4;
+}
+
+/* ?? NEW: Edited indicator badge */
+.segment.edited::after {
+    content: '\270F\FE0F  Edited';  /* Pencil icon ?? - using proper CSS Unicode escape */
+    position: absolute;
+    right: 10px;
+    top: -10px;
+    background: #00C851;
+    color: white;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    box-shadow: 0 2px 4px rgba(0, 200, 81, 0.3);
+    z-index: 10;
+}
+
+/* ? Ensure edited badge doesn't interfere with pending changes badge */
+.segment.editing::after {
+    display: none;
+}
+
+/* ? NEW: Visual indicator for segments with pending speaker changes */
+.segment.has-pending-changes {
+    background: #e3f2fd;
+    border-left: 4px solid #2196f3;
+    position: relative;
+}
+
+.segment.has-pending-changes::after {
+    content: '\23F3 Pending changes - click to save';  /* Hourglass ? - using CSS Unicode escape */
+    position: absolute;
+    right: 10px;
+    top: -8px;
+    background: #2196f3;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    animation: pulse-pending 2s ease-in-out infinite;
+}
+
+@keyframes pulse-pending {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.segment.has-pending-changes .segment-speaker-dropdown {
+    border-color: #2196f3;
+    background: #e3f2fd;
+    font-weight: 700;
+}
+
+.segment.show-comparison .edit-comparison-tooltip {
+    display: block;
+}
+
+/* Segment Line Layout */
+.segment-line {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    line-height: 1.6;
+    width: 100%;
+    pointer-events: none;  /* Prevent clicks on container; children with pointer-events: auto can still be clicked */
+}
+
+.segment-number {
+    font-weight: bold;
+    color: var(--gray-500);
+    flex-shrink: 0;
+    font-size: 0.9rem;
+}
+
+/* Speaker Display */
+.segment-speaker-display,
+.speaker-name {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 1rem;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.segment-speaker-dropdown {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 1rem;
+    padding: 4px 8px;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-sm);
+    background: var(--white);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+    width: auto;
+    min-width: fit-content;
+    pointer-events: auto;
+}
+
+/* ? When disabled, allow clicks to pass through to segment container */
+.segment-speaker-dropdown:disabled {
+    pointer-events: none;
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.segment-speaker-dropdown:hover {
+    border-color: var(--primary-dark);
+    background: var(--gray-50);
+}
+
+.segment-speaker-dropdown:focus {
+    outline: none;
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.speaker-selector {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    background: var(--white);
+    cursor: pointer;
+}
+
+.speaker-selector:focus {
+    outline: none;
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Timestamp Display */
+.segment-timestamp,
+.segment-time,
+.timestamp {
+    color: var(--gray-500);
+    font-size: 0.85rem;
+    transition: color var(--transition-fast);
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-family: monospace;
+    margin-left: auto;
+    text-align: right;
+    pointer-events: auto;
+    cursor: pointer;
+}
+
+.segment-time:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+/* Segment Text */
+.segment-text {
+    color: var(--gray-800);
+    line-height: 1.6;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 2px 4px;
+    border-radius: var(--radius-sm);
+    transition: all var(--transition-fast);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    cursor: text;
+    pointer-events: auto;
+}
+
+.segment:not(.editing) .segment-text {
+    cursor: pointer;
+}
+
+.segment.editing .segment-text {
+    cursor: text;
+}
+
+.segment-text.editing {
+    background: #fff3cd;
+    border: 2px solid var(--warning-color);
+    outline: none;
+    padding: 10px;
+    color: var(--gray-800) !important;
+    white-space: pre-wrap;
+    min-height: 60px;
+    display: block;
+}
+
+.segment-text.editing:focus {
+    background: #fffbea;
+    border-color: #ff9800;
+}
+
+.segment-text-editable {
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+    min-height: 60px;
+    padding: 8px 12px;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-md);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    resize: vertical;
+    background: var(--white);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+    pointer-events: auto !important;  /* CRITICAL: Allow clicks even when parent has pointer-events: none */
+    cursor: text;
+}
+
+.segment-text-editable:focus {
+    outline: none;
+    border-color: var(--primary-dark);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2), inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Edit Indicators */
+.edit-indicator {
+    background: #00C851;
+    color: var(--white);
+    padding: 2px 5px;
+    border-radius: var(--radius-sm);
+    font-size: 0.7rem;
+    font-weight: bold;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Segment Edit Actions */
+.segment-edit-actions {
+    display: none;
+    gap: var(--gap-md);
+    justify-content: flex-end;
+    padding: 8px 0 0 0;
+    margin-top: 8px;
+    border-top: 1px dashed var(--gray-300);
+}
+
+.segment.editing .segment-edit-actions {
+    display: flex;
+}
+
+.segment-edit-actions button {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    font-weight: 600;
+}
+
+.segment-edit-actions .save-btn {
+    background: var(--success-color);
+    color: var(--white);
+}
+
+.segment-edit-actions .save-btn:hover {
+    background: #45a049;
+    transform: scale(1.05);
+}
+
+.segment-edit-actions .cancel-btn {
+    background: var(--error-color);
+    color: var(--white);
+}
+
+.segment-edit-actions .cancel-btn:hover {
+    background: #da190b;
+    transform: scale(1.05);
+}
+
+.segment-actions {
+    display: none;
+    margin-top: 10px;
+    gap: var(--gap-md);
+}
+
+.segment.editing .segment-actions {
+    display: flex;
+}
+
+.segment-actions button {
+    padding: 6px 12px;
+    font-size: 0.9rem;
+}
+
+/* Edit Comparison Tooltip */
+.edit-comparison-tooltip {
+    display: none;
+    margin-top: 15px;
+    padding: 15px;
+    background: var(--white);
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.edit-comparison-header {
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 15px;
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.comparison-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.comparison-column {
+    padding: 10px;
+    border-radius: var(--radius-md);
+}
+
+.comparison-column.original {
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+}
+
+.comparison-column.edited {
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+}
+
+.comparison-column-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+
+.comparison-column-text {
+    line-height: 1.6;
+}
+
+.text-comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.comparison-panel {
+    padding: 12px;
+    border-radius: var(--radius-md);
+}
+
+.comparison-panel.old-text {
+    background: #ffebee;
+    border: 1px solid #ffcdd2;
+}
+
+.comparison-panel.new-text {
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+}
+
+.comparison-header {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+}
+
+.comparison-text {
+    line-height: 1.6;
+}
+
+.text-diff {
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+.text-diff-old {
+    color: #d32f2f;
+    background: #ffebee;
+    padding: 5px;
+    border-radius: var(--radius-sm);
+    margin-bottom: 3px;
+}
+
+.text-diff-new {
+    color: #388e3c;
+    background: #e8f5e9;
+    padding: 5px;
+    border-radius: var(--radius-sm);
+}
