@@ -20,6 +20,27 @@ class Config:
     AZURE_SPEECH_REGION = os.getenv('AZURE_SPEECH_REGION')
     AZURE_SPEECH_ENDPOINT = os.getenv('AZURE_SPEECH_ENDPOINT')
     
+    # Azure Cloud - 'AzureCloud' (commercial) or 'AzureUSGovernment'
+    AZURE_CLOUD = os.getenv('AZURE_CLOUD', 'AzureCloud')
+
+    # Cloud-specific endpoint suffixes, token audiences, and authorities
+    _CLOUD_CONFIG = {
+        'AzureCloud': {
+            'storage_suffix': 'blob.core.windows.net',
+            'storage_audience': 'https://storage.azure.com',
+            'authority_host': 'https://login.microsoftonline.com',
+            'cognitive_suffix': 'api.cognitive.microsoft.com',
+            'speech_host_suffix': 'stt.speech.microsoft.com',
+        },
+        'AzureUSGovernment': {
+            'storage_suffix': 'blob.core.usgovcloudapi.net',
+            'storage_audience': 'https://storage.azure.us',
+            'authority_host': 'https://login.microsoftonline.us',
+            'cognitive_suffix': 'api.cognitive.microsoft.us',
+            'speech_host_suffix': 'stt.speech.azure.us',
+        },
+    }
+    
     # Azure Storage - OPTIONAL (for batch transcription)
     AZURE_STORAGE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
     AZURE_STORAGE_CONTAINER_NAME = os.getenv('AZURE_STORAGE_CONTAINER_NAME', 'speech-transcriptions')
@@ -70,10 +91,37 @@ class Config:
     TRANSCRIPTION_POLL_INTERVAL_SECONDS = float(os.getenv('TRANSCRIPTION_POLL_INTERVAL_SECONDS', 0.5))
     
     @property
+    def _cloud(self):
+        """Get the endpoint configuration for the selected Azure cloud"""
+        return self._CLOUD_CONFIG.get(self.AZURE_CLOUD, self._CLOUD_CONFIG['AzureCloud'])
+
+    @property
     def BLOB_SERVICE_ENDPOINT(self):
         """Get the blob service endpoint URL"""
         if self.AZURE_STORAGE_ACCOUNT_NAME:
-            return f"https://{self.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+            return f"https://{self.AZURE_STORAGE_ACCOUNT_NAME}.{self._cloud['storage_suffix']}"
+        return ""
+
+    @property
+    def STORAGE_AUDIENCE(self):
+        """Get the storage OAuth token audience for the selected cloud"""
+        return self._cloud['storage_audience']
+
+    @property
+    def AUTHORITY_HOST(self):
+        """Get the Entra ID (AAD) authority host for the selected cloud"""
+        return self._cloud['authority_host']
+
+    @property
+    def COGNITIVE_SUFFIX(self):
+        """Get the Cognitive Services endpoint suffix for the selected cloud"""
+        return self._cloud['cognitive_suffix']
+
+    @property
+    def SPEECH_HOST(self):
+        """Get the real-time Speech SDK host URL for the selected cloud"""
+        if self.AZURE_SPEECH_REGION:
+            return f"wss://{self.AZURE_SPEECH_REGION}.{self._cloud['speech_host_suffix']}"
         return ""
     
     @property

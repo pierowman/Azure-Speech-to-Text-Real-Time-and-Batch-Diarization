@@ -37,12 +37,20 @@ class SpeechToTextService:
         
         # Always use region-based config for ConversationTranscriber
         # Custom endpoints are primarily for speech-to-text, not conversation transcription
-        speech_config = speechsdk.SpeechConfig(
-            subscription=self.subscription_key,
-            region=self.region
-        )
-        
-        logger.info(f"Using region-based endpoint: {self.region}.stt.speech.microsoft.com")
+        if config.AZURE_CLOUD != 'AzureCloud':
+            # Non-commercial clouds (e.g. Azure Government) require an explicit host;
+            # region-based config resolves only to the commercial cloud.
+            speech_config = speechsdk.SpeechConfig(
+                subscription=self.subscription_key,
+                host=config.SPEECH_HOST
+            )
+            logger.info(f"Using host-based endpoint: {config.SPEECH_HOST}")
+        else:
+            speech_config = speechsdk.SpeechConfig(
+                subscription=self.subscription_key,
+                region=self.region
+            )
+            logger.info(f"Using region-based endpoint: {self.region}.stt.speech.microsoft.com")
         
         return speech_config
     

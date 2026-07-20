@@ -43,8 +43,8 @@ class BatchTranscriptionService:
     def __init__(self):
         self.subscription_key = config.AZURE_SPEECH_KEY
         self.region = config.AZURE_SPEECH_REGION
-        self.base_url = f"https://{self.region}.api.cognitive.microsoft.com/speechtotext/v3.1"
-        self.models_base_url = f"https://{self.region}.api.cognitive.microsoft.com/speechtotext/v3.2"
+        self.base_url = f"https://{self.region}.{config.COGNITIVE_SUFFIX}/speechtotext/v3.1"
+        self.models_base_url = f"https://{self.region}.{config.COGNITIVE_SUFFIX}/speechtotext/v3.2"
         
         self.headers = {
             'Ocp-Apim-Subscription-Key': self.subscription_key,
@@ -85,19 +85,26 @@ class BatchTranscriptionService:
     def _create_blob_service_client(self) -> BlobServiceClient:
         """Create BlobServiceClient using Azure AD authentication"""
         blob_service_uri = config.BLOB_SERVICE_ENDPOINT
+        audience = config.STORAGE_AUDIENCE
+        authority = config.AUTHORITY_HOST
         
         if config.USE_MANAGED_IDENTITY:
             logger.info("Using DefaultAzureCredential (Managed Identity) for blob storage")
-            credential = DefaultAzureCredential()
-            return BlobServiceClient(account_url=blob_service_uri, credential=credential)
+            credential = DefaultAzureCredential(authority=authority)
         else:
             logger.info("Using Service Principal (Client ID/Secret) for blob storage")
             credential = ClientSecretCredential(
                 tenant_id=config.AZURE_TENANT_ID,
                 client_id=config.AZURE_CLIENT_ID,
-                client_secret=config.AZURE_CLIENT_SECRET
+                client_secret=config.AZURE_CLIENT_SECRET,
+                authority=authority
             )
-            return BlobServiceClient(account_url=blob_service_uri, credential=credential)
+        
+        return BlobServiceClient(
+            account_url=blob_service_uri,
+            credential=credential,
+            audience=audience
+        )
     
     async def _get_aiohttp_session(self) -> aiohttp.ClientSession:
         """
