@@ -69,8 +69,9 @@ if not exist .env (
     echo WARNING: You need to configure your Azure credentials!
     echo.
     echo Please edit the .env file and add:
-    echo   1. AZURE_SPEECH_KEY ^(from Azure Portal^)
-    echo   2. AZURE_SPEECH_REGION ^(e.g., eastus^)
+    echo   1. AZURE_SPEECH_REGION ^(e.g., eastus^)
+    echo   2. AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, AZURE_SPEECH_RESOURCE_NAME
+    echo   Sign in locally with 'az login' - no subscription key needed.
     echo.
     pause
 ) else (

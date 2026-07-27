@@ -74,8 +74,10 @@ jobs:
       working-directory: ./python_version
       env:
         FLASK_SECRET_KEY: test-secret-key-for-ci
-        AZURE_SPEECH_KEY: fake-key-for-testing
         AZURE_SPEECH_REGION: eastus2
+        AZURE_SUBSCRIPTION_ID: 00000000-0000-0000-0000-000000000000
+        AZURE_RESOURCE_GROUP: test-rg
+        AZURE_SPEECH_RESOURCE_NAME: test-speech-resource
       run: |
         pytest --cov=. --cov-report=xml --cov-report=html -v || true
 

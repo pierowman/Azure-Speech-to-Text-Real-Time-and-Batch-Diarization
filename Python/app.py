@@ -14,6 +14,7 @@ from flask_limiter.util import get_remote_address
 from flask_caching import Cache
 from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
+from werkzeug.exceptions import HTTPException
 import uuid
 import asyncio
 
@@ -61,12 +62,16 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s'
 )
-logger = logging.getLogger(__name__)
-logger.addFilter(RequestIdFilter())
 
-# Add the filter to werkzeug's logger as well
-werkzeug_logger = logging.getLogger('werkzeug')
-werkzeug_logger.addFilter(RequestIdFilter())
+# Attach the filter to the root logger's handlers so that EVERY log record
+# (including those propagated from child loggers such as services.*, werkzeug,
+# and messages emitted from background threads) is guaranteed to have a
+# request_id attribute before the formatter runs.
+_request_id_filter = RequestIdFilter()
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(_request_id_filter)
+
+logger = logging.getLogger(__name__)
 
 # Create Flask app
 app = Flask(__name__)
@@ -140,6 +145,20 @@ def handle_rate_limit(e: Exception) -> Tuple[Response, int]:
     }), 429
 
 
+@app.errorhandler(HTTPException)
+def handle_http_exception(e: HTTPException) -> Tuple[Response, int]:
+    """Handle standard HTTP errors (404, 405, etc.) without noisy tracebacks"""
+    request_id = getattr(g, 'request_id', 'unknown')
+    logger.info(f"HTTP {e.code} for {request.path}: {e.name}",
+                extra={'request_id': request_id})
+    return jsonify({
+        'success': False,
+        'error_code': e.name.upper().replace(' ', '_'),
+        'message': e.description,
+        'request_id': request_id
+    }), e.code or 500
+
+
 @app.errorhandler(Exception)
 def handle_unexpected_error(e: Exception) -> Tuple[Response, int]:
     """Handle unexpected errors"""
@@ -198,6 +217,16 @@ def index():
                          default_min_speakers=config.DEFAULT_MIN_SPEAKERS,
                          default_max_speakers=config.DEFAULT_MAX_SPEAKERS,
                          default_locale=config.DEFAULT_LOCALE)
+
+
+@app.route('/favicon.ico')
+@limiter.exempt
+def favicon() -> Response:
+    """Serve favicon (returns 204 if no icon is available) to avoid noisy 404s"""
+    icon_path = os.path.join(app.static_folder, 'favicon.ico')
+    if os.path.exists(icon_path):
+        return send_file(icon_path, mimetype='image/vnd.microsoft.icon')
+    return Response(status=204)
 
 
 @app.route('/upload-and-transcribe', methods=['POST'])

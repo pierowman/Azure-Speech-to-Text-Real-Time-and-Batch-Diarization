@@ -17,41 +17,37 @@ class SpeechToTextService:
     """Service for real-time speech transcription with diarization"""
     
     def __init__(self):
-        self.subscription_key = config.AZURE_SPEECH_KEY
         self.region = config.AZURE_SPEECH_REGION
         self.endpoint = config.AZURE_SPEECH_ENDPOINT
+        self.resource_id = config.AZURE_SPEECH_RESOURCE_ID
         self.default_locale = config.DEFAULT_LOCALE
         self.poll_interval = config.TRANSCRIPTION_POLL_INTERVAL_SECONDS
-        
-        if not self.subscription_key:
-            raise ValueError("Azure Speech subscription key not found in configuration")
+
         if not self.region:
             raise ValueError("Azure Speech region not found in configuration")
+        if not self.resource_id:
+            raise ValueError("AZURE_SPEECH_RESOURCE_ID is required for Microsoft Entra ID authentication")
+
+        # Microsoft Entra ID credential (Managed Identity in Azure, Azure CLI / VS Code sign-in locally)
+        self._credential = config.create_credential()
     
     def _create_speech_config(self) -> speechsdk.SpeechConfig:
         """Create Azure Speech SDK configuration"""
-        # IMPORTANT: For ConversationTranscriber, use region-based configuration only
-        # Custom endpoints may not support conversation transcription features
         logger.info(f"Creating speech config - Region: {self.region}")
         logger.info(f"Custom endpoint configured: {self.endpoint if self.endpoint else 'None'}")
-        
-        # Always use region-based config for ConversationTranscriber
-        # Custom endpoints are primarily for speech-to-text, not conversation transcription
-        if config.AZURE_CLOUD != 'AzureCloud':
-            # Non-commercial clouds (e.g. Azure Government) require an explicit host;
-            # region-based config resolves only to the commercial cloud.
-            speech_config = speechsdk.SpeechConfig(
-                subscription=self.subscription_key,
-                host=config.SPEECH_HOST
-            )
-            logger.info(f"Using host-based endpoint: {config.SPEECH_HOST}")
-        else:
-            speech_config = speechsdk.SpeechConfig(
-                subscription=self.subscription_key,
-                region=self.region
-            )
-            logger.info(f"Using region-based endpoint: {self.region}.stt.speech.microsoft.com")
-        
+
+        # Microsoft Entra ID authentication for SpeechRecognizer / ConversationTranscriber:
+        # pass the TokenCredential directly together with the resource's custom-subdomain
+        # endpoint (https://<resource-name>.cognitiveservices.azure.com/). The SDK acquires
+        # and refreshes the token internally. This is the officially supported pattern; the
+        # manual 'aad#<resourceId>#<token>' authorization token does not work reliably with
+        # endpoint-based config and results in a silent cancel with no segments.
+        speech_config = speechsdk.SpeechConfig(
+            token_credential=self._credential,
+            endpoint=self.endpoint
+        )
+        logger.info(f"Using custom-domain endpoint with TokenCredential: {self.endpoint}")
+
         return speech_config
     
     def transcribe_with_diarization(
@@ -158,8 +154,18 @@ class SpeechToTextService:
                 
                 cancellation_details = evt.cancellation_details
                 
-                logger.warning(f"Transcription canceled: {cancellation_details.reason}")
-                logger.debug(f"Error code: {cancellation_details.error_code}, Details: {cancellation_details.error_details}")
+                logger.warning(
+                    f"Transcription canceled: {cancellation_details.reason} | "
+                    f"Code: {cancellation_details.error_code} | "
+                    f"Details: {cancellation_details.error_details}"
+                )
+                if cancellation_details.reason != speechsdk.CancellationReason.EndOfStream:
+                    logger.error(
+                        f"Cancellation details - Code: {cancellation_details.error_code}, "
+                        f"Details: {cancellation_details.error_details}"
+                    )
+                else:
+                    logger.debug(f"Error code: {cancellation_details.error_code}, Details: {cancellation_details.error_details}")
                 
                 # EndOfStream is NOT an error - it means the audio file finished successfully
                 if cancellation_details.reason == speechsdk.CancellationReason.EndOfStream:

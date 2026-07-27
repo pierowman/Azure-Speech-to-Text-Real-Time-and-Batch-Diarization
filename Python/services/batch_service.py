@@ -8,9 +8,7 @@ import requests
 import aiohttp
 from typing import List, Optional
 from datetime import datetime, timedelta
-from urllib.parse import urlparse, parse_qs
 from azure.storage.blob import BlobServiceClient
-from azure.identity import DefaultAzureCredential, ClientSecretCredential
 from models import TranscriptionJob, LocaleInfo, TranscriptionProperties
 from config import config
 
@@ -41,20 +39,22 @@ class BatchTranscriptionService:
     _cache_expiration = None
     
     def __init__(self):
-        self.subscription_key = config.AZURE_SPEECH_KEY
         self.region = config.AZURE_SPEECH_REGION
-        self.base_url = f"https://{self.region}.{config.COGNITIVE_SUFFIX}/speechtotext/v3.1"
-        self.models_base_url = f"https://{self.region}.{config.COGNITIVE_SUFFIX}/speechtotext/v3.2"
-        
-        self.headers = {
-            'Ocp-Apim-Subscription-Key': self.subscription_key,
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-        }
-        
+        # Microsoft Entra ID auth requires the resource's custom-subdomain endpoint
+        # (https://<resource-name>.cognitiveservices.azure.com), NOT the regional
+        # shared endpoint (https://<region>.api.cognitive.microsoft.com), which only
+        # works with subscription keys and returns HTTP 400 for bearer-token auth.
+        endpoint = config.AZURE_SPEECH_ENDPOINT.rstrip('/')
+        self.base_url = f"{endpoint}/speechtotext/v3.1"
+        self.models_base_url = f"{endpoint}/speechtotext/v3.2"
+
+        # Microsoft Entra ID credential (Managed Identity in Azure, Azure CLI / VS Code sign-in locally)
+        self._credential = config.create_credential()
+        self._speech_token = None
+        self._speech_token_expires_on = 0
+
         # PERFORMANCE: Create persistent requests session with connection pooling
         self.session = requests.Session()
-        self.session.headers.update(self.headers)
         
         # Configure connection pooling adapter
         adapter = requests.adapters.HTTPAdapter(
@@ -82,27 +82,33 @@ class BatchTranscriptionService:
         else:
             logger.info("Azure Blob Storage is not configured. Using placeholder mode.")
     
+    def _get_speech_token(self) -> str:
+        """Get a cached Entra ID bearer token for the Speech (Cognitive Services) REST API."""
+        import time
+        if self._speech_token and time.time() < (self._speech_token_expires_on - 300):
+            return self._speech_token
+        token = self._credential.get_token(config.COGNITIVE_SCOPE)
+        self._speech_token = token.token
+        self._speech_token_expires_on = token.expires_on
+        return self._speech_token
+
+    def _speech_headers(self) -> dict:
+        """Authorization headers for calls to the Speech REST API."""
+        return {
+            'Authorization': f'Bearer {self._get_speech_token()}',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+        }
+
     def _create_blob_service_client(self) -> BlobServiceClient:
-        """Create BlobServiceClient using Azure AD authentication"""
+        """Create BlobServiceClient using Microsoft Entra ID authentication"""
         blob_service_uri = config.BLOB_SERVICE_ENDPOINT
         audience = config.STORAGE_AUDIENCE
-        authority = config.AUTHORITY_HOST
-        
-        if config.USE_MANAGED_IDENTITY:
-            logger.info("Using DefaultAzureCredential (Managed Identity) for blob storage")
-            credential = DefaultAzureCredential(authority=authority)
-        else:
-            logger.info("Using Service Principal (Client ID/Secret) for blob storage")
-            credential = ClientSecretCredential(
-                tenant_id=config.AZURE_TENANT_ID,
-                client_id=config.AZURE_CLIENT_ID,
-                client_secret=config.AZURE_CLIENT_SECRET,
-                authority=authority
-            )
-        
+
+        logger.info("Using DefaultAzureCredential (Managed Identity / Azure sign-in) for blob storage")
         return BlobServiceClient(
             account_url=blob_service_uri,
-            credential=credential,
+            credential=self._credential,
             audience=audience
         )
     
@@ -121,7 +127,6 @@ class BatchTranscriptionService:
             )
             
             self._aiohttp_session = aiohttp.ClientSession(
-                headers=self.headers,
                 connector=connector,
                 timeout=aiohttp.ClientTimeout(total=30)
             )
@@ -211,7 +216,8 @@ class BatchTranscriptionService:
             # PERFORMANCE: Use persistent session instead of creating new connection
             response = self.session.post(
                 f"{self.base_url}/transcriptions",
-                json=request_body
+                json=request_body,
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -240,16 +246,11 @@ class BatchTranscriptionService:
     
     async def _upload_files_to_blob_storage(self, audio_file_paths: List[str]) -> List[str]:
         """
-        Upload files to Azure Blob Storage using Service Principal or Managed Identity
-        
-        Returns blob URLs with SAS tokens for Azure Speech Service to access.
-        
-        Note: We use Service Principal/Managed Identity for uploading (secure),
-        but generate temporary SAS tokens for Azure Speech Service to access the blobs.
-        This is necessary because Azure Speech Service needs to read the files.
-        
-        Alternative: Configure Azure Speech Service with Managed Identity and grant it
-        'Storage Blob Data Reader' role on the storage account to avoid SAS tokens entirely.
+        Upload files to Azure Blob Storage using Microsoft Entra ID (Managed Identity).
+
+        Returns plain blob URLs (no SAS tokens). The Azure Speech Service reads these
+        blobs using its own managed identity, which must be granted the
+        'Storage Blob Data Reader' role on the storage account.
         """
         blob_urls = []
         
@@ -281,36 +282,23 @@ class BatchTranscriptionService:
                 try:
                     import os
                     import uuid
-                    from datetime import datetime, timedelta
-                    from azure.storage.blob import generate_blob_sas, BlobSasPermissions
-                    
+
                     file_name = os.path.basename(file_path)
                     blob_name = f"{uuid.uuid4()}_{file_name}"
                     blob_client = container_client.get_blob_client(blob_name)
                     
                     logger.info(f"Uploading file to blob storage: {file_name} as {blob_name}")
                     
-                    # Upload using Service Principal/Managed Identity (no SAS needed for us)
+                    # Upload using Managed Identity / Entra ID (no SAS needed)
                     with open(file_path, 'rb') as data:
                         blob_client.upload_blob(data, overwrite=True)
                     
                     logger.info(f"File uploaded successfully: {blob_name}")
                     
-                    # Generate SAS token for Azure Speech Service to access the blob
-                    # This is a short-lived token (24 hours) specifically for Speech Service
-                    # Alternative: Configure Speech Service Managed Identity with Storage Blob Data Reader role
-                    try:
-                        # Try to get user delegation key (works with Azure AD auth)
-                        sas_token = self._generate_blob_sas_with_user_delegation(blob_name)
-                        blob_url_with_sas = f"{blob_client.url}?{sas_token}"
-                        blob_urls.append(blob_url_with_sas)
-                        logger.info(f"Generated user delegation SAS for Speech Service access")
-                    except Exception as sas_ex:
-                        logger.warning(f"Could not generate user delegation SAS: {sas_ex}")
-                        # Fallback: try account key SAS if available, otherwise use URL without SAS
-                        # Note: URL without SAS will only work if Speech Service has Managed Identity access
-                        blob_urls.append(blob_client.url)
-                        logger.warning(f"Using blob URL without SAS - Speech Service must have Managed Identity access")
+                    # No SAS token: the Speech resource reads the blob using its own
+                    # managed identity (requires 'Storage Blob Data Reader' on the storage account).
+                    blob_urls.append(blob_client.url)
+                    logger.info(f"Registered blob URL (no SAS) for Speech Service managed-identity access")
                     
                 except Exception as ex:
                     logger.error(f"Failed to upload file to blob storage: {file_path} - {ex}")
@@ -322,51 +310,6 @@ class BatchTranscriptionService:
             logger.error(f"Error uploading files to blob storage: {ex}")
         
         return blob_urls
-    
-    def _generate_blob_sas_with_user_delegation(self, blob_name: str, expiry_hours: int = 24) -> str:
-        """
-        Generate a SAS token using user delegation key (Azure AD based)
-        This is more secure than account key-based SAS
-        
-        Args:
-            blob_name: Name of the blob
-            expiry_hours: Hours until SAS expires (default 24)
-            
-        Returns:
-            SAS token string
-            
-        Raises:
-            Exception: If SAS generation fails
-        """
-        from datetime import datetime, timedelta
-        from azure.storage.blob import generate_blob_sas, BlobSasPermissions, UserDelegationKey
-        
-        try:
-            # Get user delegation key (requires Azure AD authentication)
-            delegation_key_start_time = datetime.utcnow()
-            delegation_key_expiry_time = delegation_key_start_time + timedelta(hours=expiry_hours)
-            
-            user_delegation_key = self.blob_service_client.get_user_delegation_key(
-                key_start_time=delegation_key_start_time,
-                key_expiry_time=delegation_key_expiry_time
-            )
-            
-            # Generate SAS token using user delegation key
-            sas_token = generate_blob_sas(
-                account_name=config.AZURE_STORAGE_ACCOUNT_NAME,
-                container_name=config.AZURE_STORAGE_CONTAINER_NAME,
-                blob_name=blob_name,
-                user_delegation_key=user_delegation_key,
-                permission=BlobSasPermissions(read=True),
-                expiry=delegation_key_expiry_time,
-                start=delegation_key_start_time
-            )
-            
-            return sas_token
-            
-        except Exception as ex:
-            logger.error(f"Failed to generate user delegation SAS: {ex}")
-            raise
     
     def _create_placeholder_job(self, audio_file_paths: List[str], job_name: str) -> TranscriptionJob:
         """Create a placeholder job when blob storage is not configured"""
@@ -428,7 +371,8 @@ class BatchTranscriptionService:
             # PERFORMANCE: Use persistent session for job list fetch
             response = self.session.get(
                 f"{self.base_url}/transcriptions",
-                params={'skip': skip, 'top': top}
+                params={'skip': skip, 'top': top},
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -514,7 +458,7 @@ class BatchTranscriptionService:
             
             url = f"{self.base_url}/transcriptions/{job_id}/files"
             
-            async with session.get(url) as response:
+            async with session.get(url, headers=self._speech_headers()) as response:
                 if not response.ok:
                     logger.warning(f"Failed to fetch files for job {job_id}: Status {response.status}")
                     return []
@@ -589,7 +533,8 @@ class BatchTranscriptionService:
             
             # PERFORMANCE: Use persistent session
             response = self.session.get(
-                f"{self.base_url}/transcriptions/{job_id}"
+                f"{self.base_url}/transcriptions/{job_id}",
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -671,7 +616,8 @@ class BatchTranscriptionService:
             
             # PERFORMANCE: Use persistent session
             files_response = self.session.get(
-                f"{self.base_url}/transcriptions/{job_id}/files"
+                f"{self.base_url}/transcriptions/{job_id}/files",
+                headers=self._speech_headers()
             )
 
             if not files_response.ok:
@@ -686,11 +632,7 @@ class BatchTranscriptionService:
                 for idx, file_entry in enumerate(files_data['values']):
                     if file_entry.get('kind') == 'Transcription':
                         url = file_entry.get('links', {}).get('contentUrl')
-                        
-                        # Parse SAS token info
-                        sas_expiry = self._parse_sas_expiry(url) if url else None
-                        is_expired = self._is_sas_expired(url) if url else False
-                        
+
                         # Map result index to original input file name
                         file_name = f'File {idx + 1}'  # Default fallback
                         if idx < len(input_file_names):
@@ -698,29 +640,13 @@ class BatchTranscriptionService:
                             logger.info(f"Mapped result {idx} to original file: {file_name}")
                         else:
                             logger.warning(f"No input file name for result index {idx}, using fallback: {file_name}")
-                        
+
                         transcription_files.append({
                             'index': idx,
                             'name': file_name,
                             'url': url,
                             'size': file_entry.get('properties', {}).get('size', 0),
-                            'sasExpiry': sas_expiry,
-                            'sasExpired': is_expired
                         })
-                        
-                        if is_expired:
-                            logger.warning(f"File {idx} '{file_name}' has EXPIRED SAS token (expired: {sas_expiry})")
-                        elif sas_expiry:
-                            # Calculate time until expiry for logging
-                            try:
-                                expiry_dt = datetime.strptime(sas_expiry, '%Y-%m-%dT%H:%M:%SZ')
-                                time_diff = expiry_dt - datetime.utcnow()
-                                hours_left = time_diff.total_seconds() / 3600
-                                logger.info(f"File {idx} '{file_name}' SAS token valid for {hours_left:.1f} hours (until: {sas_expiry})")
-                            except:
-                                logger.info(f"File {idx} '{file_name}' SAS token valid until: {sas_expiry}")
-                        else:
-                            logger.warning(f"File {idx} '{file_name}' has no SAS expiry info")
             
             logger.info(f"Found {len(transcription_files)} transcription files for job {job_id}")
             return transcription_files
@@ -766,7 +692,8 @@ class BatchTranscriptionService:
             # PERFORMANCE: Use persistent session for file list
             logger.info(f"Fetching file list for job {job_id}...")
             files_response = self.session.get(
-                f"{self.base_url}/transcriptions/{job_id}/files"
+                f"{self.base_url}/transcriptions/{job_id}/files",
+                headers=self._speech_headers()
             )
 
             if not files_response.ok:
@@ -837,30 +764,16 @@ class BatchTranscriptionService:
             for file_idx, result_file_url in enumerate(result_file_urls):
                 logger.info(f"Processing file {file_idx + 1}/{len(result_file_urls)}")
                 logger.debug(f"   URL: {result_file_url[:100]}...")
-                
-                # Check if SAS token is expired
-                if self._is_sas_expired(result_file_url):
-                    expiry = self._parse_sas_expiry(result_file_url)
-                    logger.error(f"SAS token EXPIRED for file {file_idx + 1} (expired: {expiry})")
-                    logger.error(f"   Cannot download file - SAS token has expired. Re-fetch files list to get fresh tokens.")
-                    continue
-                
-                # Log SAS expiry for debugging
-                sas_expiry = self._parse_sas_expiry(result_file_url)
-                if sas_expiry:
-                    logger.info(f"   SAS token valid until: {sas_expiry}")
-                
-                # PERFORMANCE: Use persistent session for file download
+
+                # Download the result file directly from the URL returned by the Speech
+                # service. No Authorization header is sent (the URL is directly accessible).
                 logger.info(f"   Downloading transcription file...")
-                result_response = self.session.get(result_file_url)
-                
+                result_response = requests.get(result_file_url)
+
                 if not result_response.ok:
                     logger.error(f"Failed to download results: Status {result_response.status_code}")
                     if result_response.status_code == 404:
-                        logger.error(f"   404 Error - File not found. This could be due to:")
-                        logger.error(f"   1. Expired SAS token (check expiry: {sas_expiry})")
-                        logger.error(f"   2. File deleted from Azure Storage")
-                        logger.error(f"   3. Invalid URL format")
+                        logger.error(f"   404 Error - File not found (deleted from storage or invalid URL)")
                     logger.error(f"   Response: {result_response.text[:500]}")
                     continue
                 
@@ -956,7 +869,8 @@ class BatchTranscriptionService:
             
             # PERFORMANCE: Use persistent session
             response = self.session.delete(
-                f"{self.base_url}/transcriptions/{job_id}"
+                f"{self.base_url}/transcriptions/{job_id}",
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -993,7 +907,8 @@ class BatchTranscriptionService:
             
             # PERFORMANCE: Use persistent session
             response = self.session.get(
-                f"{self.models_base_url}/models"
+                f"{self.models_base_url}/models",
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -1054,7 +969,8 @@ class BatchTranscriptionService:
             
             # PERFORMANCE: Use persistent session
             response = self.session.get(
-                f"{self.models_base_url}/models"
+                f"{self.models_base_url}/models",
+                headers=self._speech_headers()
             )
             
             if not response.ok:
@@ -1286,39 +1202,6 @@ class BatchTranscriptionService:
         
         logger.info(f"Parsed {len(segments)} segments from batch transcription result")
         return segments
-    
-    def _parse_sas_expiry(self, url: str) -> Optional[str]:
-        """Extract SAS token expiry timestamp from Azure Storage URL"""
-        if not url:
-            return None
-        
-        try:
-            parsed = urlparse(url)
-            query_params = parse_qs(parsed.query)
-            
-            # SAS expiry is in 'se' parameter
-            if 'se' in query_params:
-                expiry = query_params['se'][0]
-                return expiry
-        except Exception as ex:
-            logger.debug(f"Could not parse SAS expiry from URL: {ex}")
-        
-        return None
-    
-    def _is_sas_expired(self, url: str) -> bool:
-        """Check if SAS token in URL is expired"""
-        expiry_str = self._parse_sas_expiry(url)
-        if not expiry_str:
-            return False
-        
-        try:
-            # Parse expiry timestamp (format: 2024-01-15T10:30:00Z)
-            expiry_dt = datetime.strptime(expiry_str, '%Y-%m-%dT%H:%M:%SZ')
-            now = datetime.utcnow()
-            return now >= expiry_dt
-        except Exception as ex:
-            logger.debug(f"Could not parse SAS expiry timestamp: {ex}")
-            return False
 
 
 # Create singleton instance

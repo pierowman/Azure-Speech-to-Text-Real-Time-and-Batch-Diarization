@@ -74,9 +74,16 @@ FLASK_SECRET_KEY=<generate-a-strong-random-key>
 FLASK_DEBUG=false  # Set to true only for development
 
 # Azure Speech Service
-AZURE_SPEECH_KEY=<your-azure-speech-key>
+# Authentication uses Microsoft Entra ID (Managed Identity in Azure, or your
+# Azure CLI / VS Code sign-in when running locally). No subscription key is used.
+# The endpoint and resource ID are built automatically from the values below.
 AZURE_SPEECH_REGION=<your-region>  # e.g., eastus2
-AZURE_SPEECH_ENDPOINT=<your-custom-endpoint>  # Optional
+AZURE_SUBSCRIPTION_ID=<your-subscription-id>
+AZURE_RESOURCE_GROUP=<your-resource-group>
+AZURE_SPEECH_RESOURCE_NAME=<your-speech-resource-name>
+
+# Azure Cloud: 'AzureCloud' (commercial, default) or 'AzureUSGovernment'
+AZURE_CLOUD=AzureCloud
 
 # Azure Blob Storage (for batch transcription)
 AZURE_STORAGE_ACCOUNT_NAME=<your-storage-account>
@@ -84,10 +91,9 @@ AZURE_STORAGE_CONTAINER_NAME=speech-transcriptions
 ENABLE_BLOB_STORAGE=true
 
 # Authentication
-USE_MANAGED_IDENTITY=false  # Set to true when running in Azure
-AZURE_TENANT_ID=<your-tenant-id>
-AZURE_CLIENT_ID=<your-client-id>
-AZURE_CLIENT_SECRET=<your-client-secret>
+# Uses DefaultAzureCredential (Managed Identity in Azure, or local az login / VS Code sign-in).
+# Optional: set AZURE_CLIENT_ID only for a USER-ASSIGNED managed identity.
+AZURE_CLIENT_ID=<your-user-assigned-identity-client-id>
 ```
 
 ### 5. Generate a secure secret key

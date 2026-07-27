@@ -3,6 +3,7 @@ Configuration settings for the Speech-to-Text application
 """
 import os
 from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
 
 # Load environment variables from .env file
 load_dotenv()
@@ -15,10 +16,13 @@ class Config:
     SECRET_KEY = os.getenv('FLASK_SECRET_KEY')
     DEBUG = os.getenv('FLASK_DEBUG', 'false').lower() == 'true'
     
-    # Azure Speech Service - REQUIRED
-    AZURE_SPEECH_KEY = os.getenv('AZURE_SPEECH_KEY')
+    # Azure Speech Service - REQUIRED (authenticated via Microsoft Entra ID / Managed Identity)
     AZURE_SPEECH_REGION = os.getenv('AZURE_SPEECH_REGION')
-    AZURE_SPEECH_ENDPOINT = os.getenv('AZURE_SPEECH_ENDPOINT')
+    # Components used to build the Speech resource's ARM resource ID (required for
+    # real-time SDK Entra ID auth). The full ID is exposed via AZURE_SPEECH_RESOURCE_ID.
+    AZURE_SUBSCRIPTION_ID = os.getenv('AZURE_SUBSCRIPTION_ID')
+    AZURE_RESOURCE_GROUP = os.getenv('AZURE_RESOURCE_GROUP')
+    AZURE_SPEECH_RESOURCE_NAME = os.getenv('AZURE_SPEECH_RESOURCE_NAME')
     
     # Azure Cloud - 'AzureCloud' (commercial) or 'AzureUSGovernment'
     AZURE_CLOUD = os.getenv('AZURE_CLOUD', 'AzureCloud')
@@ -30,6 +34,8 @@ class Config:
             'storage_audience': 'https://storage.azure.com',
             'authority_host': 'https://login.microsoftonline.com',
             'cognitive_suffix': 'api.cognitive.microsoft.com',
+            'cognitive_audience': 'https://cognitiveservices.azure.com',
+            'cognitive_endpoint_suffix': 'cognitiveservices.azure.com',
             'speech_host_suffix': 'stt.speech.microsoft.com',
         },
         'AzureUSGovernment': {
@@ -37,6 +43,8 @@ class Config:
             'storage_audience': 'https://storage.azure.us',
             'authority_host': 'https://login.microsoftonline.us',
             'cognitive_suffix': 'api.cognitive.microsoft.us',
+            'cognitive_audience': 'https://cognitiveservices.azure.us',
+            'cognitive_endpoint_suffix': 'cognitiveservices.azure.us',
             'speech_host_suffix': 'stt.speech.azure.us',
         },
     }
@@ -45,10 +53,9 @@ class Config:
     AZURE_STORAGE_ACCOUNT_NAME = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
     AZURE_STORAGE_CONTAINER_NAME = os.getenv('AZURE_STORAGE_CONTAINER_NAME', 'speech-transcriptions')
     ENABLE_BLOB_STORAGE = os.getenv('ENABLE_BLOB_STORAGE', 'false').lower() == 'true'
-    USE_MANAGED_IDENTITY = os.getenv('USE_MANAGED_IDENTITY', 'false').lower() == 'true'
-    AZURE_TENANT_ID = os.getenv('AZURE_TENANT_ID')
+    # Optional: client ID of a user-assigned managed identity. Leave blank to use a
+    # system-assigned managed identity in Azure, or local sign-in (Azure CLI / VS Code) for dev.
     AZURE_CLIENT_ID = os.getenv('AZURE_CLIENT_ID')
-    AZURE_CLIENT_SECRET = os.getenv('AZURE_CLIENT_SECRET')
     
     # Upload settings
     UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', 'static/uploads')
@@ -108,6 +115,36 @@ class Config:
         return self._cloud['storage_audience']
 
     @property
+    def COGNITIVE_AUDIENCE(self):
+        """Get the Cognitive Services OAuth token audience for the selected cloud"""
+        return self._cloud['cognitive_audience']
+
+    @property
+    def COGNITIVE_SCOPE(self):
+        """Get the Cognitive Services (Speech) Entra ID token scope for the selected cloud"""
+        return f"{self.COGNITIVE_AUDIENCE}/.default"
+
+    @property
+    def AZURE_SPEECH_RESOURCE_ID(self):
+        """Build the Speech resource's full ARM resource ID from its components"""
+        if (self.AZURE_SUBSCRIPTION_ID and
+                self.AZURE_RESOURCE_GROUP and
+                self.AZURE_SPEECH_RESOURCE_NAME):
+            return (
+                f"/subscriptions/{self.AZURE_SUBSCRIPTION_ID}"
+                f"/resourceGroups/{self.AZURE_RESOURCE_GROUP}"
+                f"/providers/Microsoft.CognitiveServices/accounts/{self.AZURE_SPEECH_RESOURCE_NAME}"
+            )
+        return ""
+
+    @property
+    def AZURE_SPEECH_ENDPOINT(self):
+        """Build the Speech resource endpoint URL from the resource name and cloud suffix"""
+        if self.AZURE_SPEECH_RESOURCE_NAME:
+            return f"https://{self.AZURE_SPEECH_RESOURCE_NAME}.{self._cloud['cognitive_endpoint_suffix']}/"
+        return ""
+
+    @property
     def AUTHORITY_HOST(self):
         """Get the Entra ID (AAD) authority host for the selected cloud"""
         return self._cloud['authority_host']
@@ -130,6 +167,18 @@ class Config:
         return (self.ENABLE_BLOB_STORAGE and 
                 bool(self.AZURE_STORAGE_ACCOUNT_NAME) and 
                 bool(self.AZURE_STORAGE_CONTAINER_NAME))
+
+    def create_credential(self) -> DefaultAzureCredential:
+        """Create a DefaultAzureCredential for Microsoft Entra ID authentication.
+
+        Works with a Managed Identity in Azure and with Azure CLI / VS Code
+        sign-in for local development. Set AZURE_CLIENT_ID for a user-assigned
+        managed identity; leave it blank for system-assigned or local sign-in.
+        """
+        credential_kwargs = {'authority': self.AUTHORITY_HOST}
+        if self.AZURE_CLIENT_ID:
+            credential_kwargs['managed_identity_client_id'] = self.AZURE_CLIENT_ID
+        return DefaultAzureCredential(**credential_kwargs)
     
     def validate(self):
         """Validate required configuration values"""
@@ -139,24 +188,19 @@ class Config:
         if not self.SECRET_KEY:
             errors.append("FLASK_SECRET_KEY is required")
         
-        if not self.AZURE_SPEECH_KEY:
-            errors.append("AZURE_SPEECH_KEY is required")
-        
         if not self.AZURE_SPEECH_REGION:
             errors.append("AZURE_SPEECH_REGION is required")
-        
+
+        if not self.AZURE_SPEECH_RESOURCE_ID:
+            errors.append(
+                "AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP and AZURE_SPEECH_RESOURCE_NAME "
+                "are all required to build the Speech resource ID for Microsoft Entra ID authentication"
+            )
+
         # Blob storage validation (if enabled)
         if self.ENABLE_BLOB_STORAGE:
             if not self.AZURE_STORAGE_ACCOUNT_NAME:
                 errors.append("AZURE_STORAGE_ACCOUNT_NAME is required when ENABLE_BLOB_STORAGE=true")
-            
-            if not self.USE_MANAGED_IDENTITY:
-                if not self.AZURE_TENANT_ID:
-                    errors.append("AZURE_TENANT_ID is required when using Service Principal authentication")
-                if not self.AZURE_CLIENT_ID:
-                    errors.append("AZURE_CLIENT_ID is required when using Service Principal authentication")
-                if not self.AZURE_CLIENT_SECRET:
-                    errors.append("AZURE_CLIENT_SECRET is required when using Service Principal authentication")
         
         if errors:
             raise ValueError(f"Configuration validation failed:\n" + "\n".join(f"  - {err}" for err in errors))

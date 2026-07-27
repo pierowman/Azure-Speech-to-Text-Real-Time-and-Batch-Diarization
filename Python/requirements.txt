@@ -1,5 +1,5 @@
 # Azure Speech SDK
-azure-cognitiveservices-speech==1.38.0
+azure-cognitiveservices-speech==1.51.1
 
 # Azure Storage (for batch transcription)
 azure-storage-blob==12.19.0
@@ -8,10 +8,11 @@ azure-identity==1.16.0
 # Web Framework
 Flask==3.0.3
 Flask-CORS==4.0.1
-
-# Security
 Flask-WTF==1.2.1
 Flask-Limiter==3.5.0
+
+# WSGI server (production hosting on Azure App Service)
+gunicorn==22.0.0
 
 # Caching
 Flask-Caching==2.1.0

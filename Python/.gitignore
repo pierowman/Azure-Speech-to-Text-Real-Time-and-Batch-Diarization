@@ -74,3 +74,6 @@ dmypy.json
 
 # Pyre
 .pyre/
+
+# Visual Studio publish profile user credentials
+*.pubxml.user
