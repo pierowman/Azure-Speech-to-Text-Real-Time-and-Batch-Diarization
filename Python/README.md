@@ -25,7 +25,7 @@ A Flask-based web application for transcribing audio files with speaker diarizat
 
 ## ?? Prerequisites
 
-- Python 3.9 or higher
+- Python 3.14 or higher
 - Azure Cognitive Services Speech API subscription
 - Azure Blob Storage account (optional, for batch transcription)
 

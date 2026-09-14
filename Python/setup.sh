@@ -14,7 +14,7 @@ echo ""
 echo "Checking Python version..."
 if ! command -v python3 &> /dev/null; then
     echo "? Error: Python 3 is not installed"
-    echo "Please install Python 3.9 or higher from https://www.python.org"
+    echo "Please install Python 3.14 or higher from https://www.python.org"
     exit 1
 fi
 

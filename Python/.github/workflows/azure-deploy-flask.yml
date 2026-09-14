@@ -7,7 +7,7 @@ on:
 
 env:
   AZURE_WEBAPP_NAME: your-app-name    # Set this to your application's name
-  PYTHON_VERSION: '3.11'              # Set this to the Python version to use
+  PYTHON_VERSION: '3.14'              # Set this to the Python version to use
 
 jobs:
   build:
