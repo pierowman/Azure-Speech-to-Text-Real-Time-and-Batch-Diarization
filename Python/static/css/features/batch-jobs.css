@@ -33,6 +33,43 @@
     gap: var(--gap-md);
 }
 
+.page-size-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.page-size-control select {
+    padding: 6px 10px;
+    border: 1px solid var(--border-color, #ccc);
+    border-radius: var(--radius-md, 6px);
+    background: var(--white, #fff);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.job-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.job-pagination .pagination-info {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-secondary, #555);
+    min-width: 240px;
+    text-align: center;
+}
+
+.job-pagination .pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .job-list-container {
     background: var(--white);
     border-radius: var(--radius-lg);

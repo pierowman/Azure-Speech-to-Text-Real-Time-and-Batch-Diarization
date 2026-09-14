@@ -825,7 +825,7 @@ def get_batch_jobs() -> Response:
         
         skip = int(request.args.get('skip', 0))
         top = int(request.args.get('top', 100))
-        
+
         cached_jobs = None
         force_refresh = False
         if request.method == 'POST':
@@ -833,16 +833,20 @@ def get_batch_jobs() -> Response:
                 data = request.get_json()
                 cached_jobs = data.get('cachedJobs', None)
                 force_refresh = data.get('forceRefresh', False)
+                if 'skip' in data:
+                    skip = int(data.get('skip'))
+                if 'top' in data:
+                    top = int(data.get('top'))
                 if cached_jobs:
                     logger.info(f"Received {len(cached_jobs)} cached jobs from client (forceRefresh={force_refresh})")
             except:
                 pass
-        
+
         if cached_jobs and not force_refresh:
             cached_job_ids = {job.get('id') for job in cached_jobs}
             logger.info(f"Using optimized refresh with {len(cached_jobs)} cached jobs")
-        
-        jobs = asyncio.run(
+
+        jobs, has_more, total = asyncio.run(
             batch_transcription_service.get_transcription_jobs(
                 skip=skip, 
                 top=top, 
@@ -850,11 +854,15 @@ def get_batch_jobs() -> Response:
                 force_refresh=force_refresh
             )
         )
-        
+
         return jsonify({
             'success': True,
             'jobs': [job.to_dict() for job in jobs],
-            'count': len(jobs)
+            'count': len(jobs),
+            'skip': skip,
+            'top': top,
+            'total': total,
+            'hasMore': has_more
         })
         
     except AuthorizationException as ex:

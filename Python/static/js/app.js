@@ -23,6 +23,10 @@ export const AppState = {
     isAutoRefreshEnabled: false,
     autoRefreshSeconds: window.BATCH_JOB_AUTO_REFRESH_SECONDS || 30,
     expandedJobId: null,
+    batchPageSize: parseInt(localStorage.getItem('batchPageSize'), 10) || 10,
+    batchPageIndex: 0,
+    batchHasMore: false,
+    batchTotal: 0,
     supportedLocales: [],
     localesLoaded: false
 };
@@ -116,7 +120,13 @@ export function initializeApp() {
     // Setup keyboard shortcuts for audio playback
     setupKeyboardShortcuts();
     console.log('?? Keyboard shortcuts initialized');
-    
+
+    // Sync batch job page-size selector with saved preference
+    const pageSizeSelect = document.getElementById('jobPageSize');
+    if (pageSizeSelect) {
+        pageSizeSelect.value = String(AppState.batchPageSize);
+    }
+
     console.log('? Application initialized');
 }
 

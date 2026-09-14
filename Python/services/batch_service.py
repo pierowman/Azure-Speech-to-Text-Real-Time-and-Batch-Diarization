@@ -6,7 +6,7 @@ import json
 import asyncio
 import requests
 import aiohttp
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 from azure.storage.blob import BlobServiceClient
 from models import TranscriptionJob, LocaleInfo, TranscriptionProperties
@@ -69,6 +69,7 @@ class BatchTranscriptionService:
         
         # PERFORMANCE: aiohttp session for async requests (created on demand)
         self._aiohttp_session: Optional[aiohttp.ClientSession] = None
+        self._aiohttp_session_loop: Optional[asyncio.AbstractEventLoop] = None
         
         # Initialize Blob Storage if configured
         self.blob_service_client = None
@@ -115,23 +116,44 @@ class BatchTranscriptionService:
     async def _get_aiohttp_session(self) -> aiohttp.ClientSession:
         """
         Get or create aiohttp session for async HTTP requests.
-        
+
         PERFORMANCE: Reuses connections across async requests for better performance.
+
+        NOTE: Each Flask request runs via ``asyncio.run(...)``, which creates a new
+        event loop. An aiohttp session is bound to the loop it was created on, so a
+        session cached from a previous (now-closed) loop cannot be reused - doing so
+        raises "Event loop is closed" and makes every request fail silently. We therefore
+        track the loop the session belongs to and recreate the session whenever the
+        current running loop differs or the previous loop has been closed.
         """
-        if self._aiohttp_session is None or self._aiohttp_session.closed:
+        current_loop = asyncio.get_running_loop()
+
+        needs_new_session = (
+            self._aiohttp_session is None
+            or self._aiohttp_session.closed
+            or self._aiohttp_session_loop is None
+            or self._aiohttp_session_loop is not current_loop
+            or self._aiohttp_session_loop.is_closed()
+        )
+
+        if needs_new_session:
+            # Abandon any session bound to a stale event loop (it cannot be awaited
+            # closed from this loop; it will be cleaned up by garbage collection).
+
             # Create session with connection pooling
             connector = aiohttp.TCPConnector(
                 limit=20,           # Max simultaneous connections
                 limit_per_host=10,  # Max per host
                 ttl_dns_cache=300   # DNS cache TTL (5 minutes)
             )
-            
+
             self._aiohttp_session = aiohttp.ClientSession(
                 connector=connector,
                 timeout=aiohttp.ClientTimeout(total=30)
             )
+            self._aiohttp_session_loop = current_loop
             logger.info("aiohttp session created with connection pooling")
-        
+
         return self._aiohttp_session
     
     def __del__(self):
@@ -331,31 +353,40 @@ class BatchTranscriptionService:
             error=error_msg
         )
     
-    async def get_transcription_jobs(self, skip: int = 0, top: int = 100, cached_jobs: Optional[List[dict]] = None, force_refresh: bool = False) -> List[TranscriptionJob]:
+    async def get_transcription_jobs(self, skip: int = 0, top: int = 100, cached_jobs: Optional[List[dict]] = None, force_refresh: bool = False) -> Tuple[List[TranscriptionJob], bool, int]:
         """
-        Get list of batch transcription jobs from Azure Speech Service
-        
+        Get a page of batch transcription jobs from Azure Speech Service, newest first.
+
         PERFORMANCE OPTIMIZATIONS:
         - Uses persistent HTTP session with connection pooling
-        - Fetches job files in parallel using asyncio.gather
+        - Only fetches per-job files for the requested page (the expensive part)
         - Caches completed/failed jobs to avoid redundant API calls
-        
+
+        ORDERING NOTE:
+        The Azure Speech v3.1 ``/transcriptions`` endpoint always returns jobs in
+        ascending (oldest-first) order and ignores any ``orderby`` parameter, and it
+        exposes no total-count field. To present the newest jobs first with paging we
+        therefore fetch the lightweight job list (metadata only, following ``@nextLink``),
+        reverse it, and slice the requested page. Only the jobs on that page have their
+        files fetched.
+
         Args:
-            skip: Number of jobs to skip
-            top: Maximum number of jobs to retrieve
+            skip: Number of newest jobs to skip (page_index * page_size)
+            top: Page size (maximum number of jobs to return)
             cached_jobs: List of cached job dicts with 'id' and 'status' to avoid re-fetching completed jobs
             force_refresh: If True, ignore cache and fetch all jobs from Azure
-            
+
         Returns:
-            List of TranscriptionJob objects
+            Tuple of (list of TranscriptionJob objects for the page, has_more flag
+            indicating that older jobs exist beyond this page, total job count)
         """
         try:
             logger.info(f"Fetching transcription jobs (skip={skip}, top={top}, force_refresh={force_refresh})")
-            
+
             # Build cache lookup for completed/failed jobs
             cached_completed_jobs = {}
             jobs_to_refresh = []
-            
+
             if cached_jobs and not force_refresh:
                 for cached_job in cached_jobs:
                     job_id = cached_job.get('id')
@@ -365,81 +396,104 @@ class BatchTranscriptionService:
                         cached_completed_jobs[job_id] = cached_job
                     else:
                         jobs_to_refresh.append(job_id)
-                
+
                 logger.info(f"Using cache: {len(cached_completed_jobs)} completed/failed jobs, {len(jobs_to_refresh)} active jobs to refresh")
-            
-            # PERFORMANCE: Use persistent session for job list fetch
-            response = self.session.get(
-                f"{self.base_url}/transcriptions",
-                params={'skip': skip, 'top': top},
-                headers=self._speech_headers()
-            )
-            
-            if not response.ok:
-                logger.error(f"Failed to fetch jobs: Status {response.status_code}")
-                return []
-            
-            data = response.json()
+
+            # PERFORMANCE: Fetch the full job list metadata (no per-job file calls).
+            # Azure returns oldest-first, so we gather every page then reverse.
+            all_job_data = []
+            next_url = f"{self.base_url}/transcriptions"
+            request_params = {'skip': 0, 'top': 100}
+            while next_url:
+                response = self.session.get(
+                    next_url,
+                    params=request_params,
+                    headers=self._speech_headers()
+                )
+
+                if not response.ok:
+                    logger.error(f"Failed to fetch jobs: Status {response.status_code}")
+                    return [], False, 0
+
+                page_data = response.json()
+                all_job_data.extend(page_data.get('values', []))
+                # @nextLink already carries its own skip/top query string
+                next_url = page_data.get('@nextLink')
+                request_params = None
+
+            total = len(all_job_data)
+
+            # Present newest first (Azure returns oldest-first) and slice the page
+            newest_first = list(reversed(all_job_data))
+            page_job_data = newest_first[skip:skip + top]
+            has_more = (skip + top) < total
+
+            logger.info(f"Total jobs: {total}, returning page skip={skip} top={top} ({len(page_job_data)} jobs), has_more={has_more}")
+
             jobs = []
-            
-            if 'values' in data:
-                # First pass: Parse all job data (fast, no I/O)
-                jobs_to_process = []
-                for job_data in data['values']:
-                    job_id = job_data.get('self', '').split('/')[-1] if job_data.get('self') else job_data.get('id', '')
-                    
-                    # Use cached data for completed/failed jobs
-                    if job_id in cached_completed_jobs:
-                        logger.debug(f"?? Using cached data for completed job: {job_id}")
-                        cached_job_obj = self._dict_to_job(cached_completed_jobs[job_id])
-                        jobs.append(cached_job_obj)
-                        
-                        # ? FIX: ALWAYS fetch files if missing, regardless of cache status
-                        if not cached_job_obj.files or len(cached_job_obj.files) == 0:
-                            logger.info(f"?? Cached job {job_id} has no files - will fetch")
-                            jobs_to_process.append(cached_job_obj)
-                        
-                        continue
-                    
-                    # Parsing job data...
-                    job = self._parse_job_data(job_data)
-                    jobs.append(job)
-                    
-                    # ? FIX: ALWAYS fetch files for ANY job with empty files array
-                    # This handles page refresh scenario where contentUrls parsing may have failed
-                    if not job.files or len(job.files) == 0:
-                        logger.debug(f"?? Job {job_id} ({job.status}) has no files - will fetch")
-                        jobs_to_process.append(job)
-                
-                # PERFORMANCE: Fetch files for all jobs that need them IN PARALLEL
-                if jobs_to_process:
-                    logger.info(f"?? Fetching files for {len(jobs_to_process)} jobs in parallel...")
-                    
-                    # Create tasks for parallel execution
-                    file_fetch_tasks = [
-                        self._get_job_files_async(job.id)
-                        for job in jobs_to_process
-                    ]
-                    
-                    # Execute all tasks concurrently
-                    files_results = await asyncio.gather(*file_fetch_tasks, return_exceptions=True)
-                    
-                    # Update jobs with fetched files
-                    for job, files_result in zip(jobs_to_process, files_results):
-                        if isinstance(files_result, Exception):
-                            logger.error(f"? Error fetching files for job {job.id}: {files_result}")
-                        elif files_result and len(files_result) > 0:
-                            job.files = files_result
-                            logger.info(f"? Job {job.id} now has {len(files_result)} files: {files_result}")
-                        else:
-                            logger.warning(f"?? Job {job.id} - no files returned from API (status: {job.status})")
-            
+            jobs_to_process = []
+            for job_data in page_job_data:
+                job_id = job_data.get('self', '').split('/')[-1] if job_data.get('self') else job_data.get('id', '')
+
+                # Use cached data for completed/failed jobs
+                if job_id in cached_completed_jobs:
+                    logger.debug(f"Using cached data for completed job: {job_id}")
+                    cached_job_obj = self._dict_to_job(cached_completed_jobs[job_id])
+                    jobs.append(cached_job_obj)
+
+                    # ALWAYS fetch files if missing, regardless of cache status
+                    if not cached_job_obj.files or len(cached_job_obj.files) == 0:
+                        logger.info(f"Cached job {job_id} has no files - will fetch")
+                        jobs_to_process.append(cached_job_obj)
+
+                    continue
+
+                # Parsing job data...
+                job = self._parse_job_data(job_data)
+                jobs.append(job)
+
+                # ALWAYS fetch files for ANY job with empty files array
+                if not job.files or len(job.files) == 0:
+                    logger.debug(f"Job {job_id} ({job.status}) has no files - will fetch")
+                    jobs_to_process.append(job)
+
+            # PERFORMANCE: Fetch files for the page's jobs that need them IN PARALLEL
+            if jobs_to_process:
+                logger.info(f"Fetching files for {len(jobs_to_process)} jobs in parallel...")
+
+                file_fetch_tasks = [
+                    self._get_job_files_async(job.id)
+                    for job in jobs_to_process
+                ]
+
+                files_results = await asyncio.gather(*file_fetch_tasks, return_exceptions=True)
+
+                for job, files_result in zip(jobs_to_process, files_results):
+                    if isinstance(files_result, Exception):
+                        logger.error(f"Error fetching files for job {job.id}: {files_result}")
+                    elif files_result and len(files_result) > 0:
+                        job.files = files_result
+                        logger.info(f"Job {job.id} now has {len(files_result)} files: {files_result}")
+                    else:
+                        logger.warning(f"Job {job.id} - no files returned from API (status: {job.status})")
+
             logger.info(f"Retrieved {len(jobs)} transcription jobs ({len([j for j in jobs if j.id in cached_completed_jobs])} from cache)")
-            return jobs
-            
+            return jobs, has_more, total
+
         except Exception as ex:
             logger.error(f"Error fetching transcription jobs: {ex}", exc_info=True)
-            return []
+            return [], False, 0
+        finally:
+            # Close the per-request aiohttp session while its event loop is still
+            # alive. Each Flask request uses a fresh asyncio loop, so a session left
+            # open here would be bound to a closed loop and unusable next time.
+            if self._aiohttp_session and not self._aiohttp_session.closed:
+                try:
+                    await self._aiohttp_session.close()
+                except Exception:
+                    pass
+            self._aiohttp_session = None
+            self._aiohttp_session_loop = None
     
     async def _get_job_files_async(self, job_id: str) -> List[str]:
         """

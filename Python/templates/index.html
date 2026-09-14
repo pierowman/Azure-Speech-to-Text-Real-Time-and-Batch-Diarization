@@ -354,23 +354,35 @@
                                 <span style="font-weight: 600; font-size: 0.9rem;">🔄 Auto-Refresh</span>
                                 <span id="autoRefreshStatus" style="color: #666; font-size: 0.85rem;"></span>
                             </div>
+                            <div class="page-size-control" title="Number of jobs to show per page">
+                                <label for="jobPageSize" style="font-weight: 600; font-size: 0.9rem;">Show</label>
+                                <select id="jobPageSize" onchange="changeBatchPageSize(this.value)">
+                                    <option value="10">10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                                <span style="font-weight: 600; font-size: 0.9rem;">per page</span>
+                            </div>
                             <button onclick="refreshJobList(true)" id="manualRefreshBtn" class="refresh-btn" title="Force refresh all jobs (including completed jobs to get fresh SAS tokens)">
                                 🔄 Refresh Jobs
                             </button>
                         </div>
                     </div>
-                    
+
                     <div class="loading" id="jobListLoading" style="display: none;">
                         <div class="spinner"></div>
                         <p>📥 Loading Jobs...</p>
                     </div>
-                    
+
                     <div id="jobListContainer" class="job-list-container">
                         <div class="info-message" style="text-align: center; padding: 40px; color: #666;">
                             <p style="font-size: 1.1rem; margin-bottom: 10px;">📂 Click "Refresh Now" to load batch jobs</p>
                             <p style="font-size: 0.9rem;">Or enable auto-refresh to automatically update the list</p>
                         </div>
                     </div>
+
+                    <div id="jobPagination" class="job-pagination" style="display: none;"></div>
                 </div>
             </div>
         </div>

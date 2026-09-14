@@ -12,8 +12,10 @@ export async function refreshJobList(forceRefresh = false) {
     
     if (loadingElement) loadingElement.style.display = 'none';
     if (refreshBtn) refreshBtn.disabled = true;
-    
-    const estimatedCount = AppState.batchJobs.length > 0 ? AppState.batchJobs.length : 10;
+
+    const pageSize = AppState.batchPageSize || 10;
+    const skip = (AppState.batchPageIndex || 0) * pageSize;
+    const estimatedCount = pageSize;
     showProgressiveLoading(estimatedCount, true);
     
     try {
@@ -47,21 +49,23 @@ export async function refreshJobList(forceRefresh = false) {
         
         let response;
         if (cachedJobs.length > 0) {
-            response = await fetch('/batch-jobs', {
+            response = await fetch(`/batch-jobs?skip=${skip}&top=${pageSize}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ cachedJobs, forceRefresh })
+                body: JSON.stringify({ cachedJobs, forceRefresh, skip, top: pageSize })
             });
         } else {
-            response = await fetch('/batch-jobs');
+            response = await fetch(`/batch-jobs?skip=${skip}&top=${pageSize}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.success) {
             const fetchTime = Date.now();
             AppState.batchJobs = data.jobs || [];
-            
+            AppState.batchHasMore = !!data.hasMore;
+            AppState.batchTotal = typeof data.total === 'number' ? data.total : AppState.batchJobs.length;
+
             if (AppState.batchJobs.length === 0) {
                 if (containerElement) containerElement.innerHTML = '';
                 renderJobList();
@@ -69,7 +73,8 @@ export async function refreshJobList(forceRefresh = false) {
             }
             
             updateLoadingMessage(AppState.batchJobs.length, false);
-            
+            updatePaginationControls();
+
             AppState.batchJobs.forEach(job => {
                 if (!job.lastFetchTime || !cachedJobs.some(cached => cached.id === job.id)) {
                     job.lastFetchTime = fetchTime;
@@ -84,7 +89,7 @@ export async function refreshJobList(forceRefresh = false) {
             
             for (let i = 0; i < sortedJobs.length; i++) {
                 setTimeout(() => {
-                    if (i < 10) {
+                    if (document.getElementById(`skeleton-${i}`)) {
                         replaceSkeletonWithJob(sortedJobs[i], i);
                     } else {
                         const container = document.getElementById('jobListContainer');
@@ -96,10 +101,11 @@ export async function refreshJobList(forceRefresh = false) {
                             if (lastCard) lastCard.after(jobCard.firstElementChild);
                         }
                     }
-                    
+
                     updateLoadingProgress(i + 1, sortedJobs.length);
-                    
+
                     if (i === sortedJobs.length - 1) {
+                        document.querySelectorAll('#jobListContainer .job-card-skeleton').forEach(s => s.remove());
                         setTimeout(() => {
                             const progressDiv = document.getElementById('loadingProgress');
                             if (progressDiv) {
@@ -130,25 +136,28 @@ export function renderJobList() {
     if (!container) return;
     
     if (AppState.batchJobs.length === 0) {
+        const isFirstPage = (AppState.batchPageIndex || 0) === 0;
         container.innerHTML = `
             <div class="empty-state">
                 <div class="empty-state-icon">\u{1F4C2}</div>
-                <div class="empty-state-text">No batch transcription jobs found</div>
+                <div class="empty-state-text">No batch transcription jobs found${isFirstPage ? '' : ' on this page'}</div>
                 <p style="color: #999; font-size: 0.9rem; margin-top: 10px;">
-                    Create a new batch job using the form below
+                    ${isFirstPage ? 'Create a new batch job using the form below' : 'Go back to a previous page to see your jobs'}
                 </p>
             </div>
         `;
+        updatePaginationControls();
         return;
     }
-    
+
     const sortedJobs = [...AppState.batchJobs].sort((a, b) => {
         const dateA = new Date(a.createdDateTime || 0);
         const dateB = new Date(b.createdDateTime || 0);
         return dateB - dateA;
     });
-    
+
     container.innerHTML = sortedJobs.map(job => renderJobCard(job)).join('');
+    updatePaginationControls();
 }
 
 function renderJobCard(job) {
@@ -399,6 +408,60 @@ export function toggleAutoRefresh(enabled) {
     }
 }
 
+export function changeBatchPageSize(size) {
+    const newSize = parseInt(size, 10);
+    if (!newSize || newSize < 1) return;
+    AppState.batchPageSize = newSize;
+    AppState.batchPageIndex = 0;
+    try { localStorage.setItem('batchPageSize', String(newSize)); } catch (e) { /* ignore */ }
+    refreshJobList();
+}
+
+export function goToNextJobPage() {
+    if (!AppState.batchHasMore) return;
+    AppState.batchPageIndex = (AppState.batchPageIndex || 0) + 1;
+    refreshJobList();
+}
+
+export function goToPrevJobPage() {
+    if ((AppState.batchPageIndex || 0) <= 0) return;
+    AppState.batchPageIndex = (AppState.batchPageIndex || 0) - 1;
+    refreshJobList();
+}
+
+function updatePaginationControls() {
+    const pagination = document.getElementById('jobPagination');
+    if (!pagination) return;
+
+    const pageIndex = AppState.batchPageIndex || 0;
+    const pageSize = AppState.batchPageSize || 10;
+    const count = AppState.batchJobs.length;
+    const total = AppState.batchTotal || 0;
+    const hasMore = !!AppState.batchHasMore;
+    const hasPrev = pageIndex > 0;
+
+    if (count === 0 && !hasPrev && !hasMore) {
+        pagination.style.display = 'none';
+        return;
+    }
+
+    pagination.style.display = 'flex';
+
+    const totalPages = total > 0 ? Math.ceil(total / pageSize) : (pageIndex + 1);
+    const start = count > 0 ? pageIndex * pageSize + 1 : 0;
+    const end = pageIndex * pageSize + count;
+
+    const rangeText = count > 0
+        ? ` \u00b7 showing ${start}\u2013${end} of ${total} job${total === 1 ? '' : 's'}`
+        : ` \u00b7 ${total} job${total === 1 ? '' : 's'}`;
+
+    pagination.innerHTML = `
+        <button class="refresh-btn pagination-btn" id="prevPageBtn" onclick="goToPrevJobPage()" ${hasPrev ? '' : 'disabled'} title="Previous page">\u2190 Previous</button>
+        <span class="pagination-info">Page ${pageIndex + 1} of ${totalPages}${rangeText}</span>
+        <button class="refresh-btn pagination-btn" id="nextPageBtn" onclick="goToNextJobPage()" ${hasMore ? '' : 'disabled'} title="Next page">Next \u2192</button>
+    `;
+}
+
 function showProgressiveLoading(total, isFetching) {
     const container = document.getElementById('jobListContainer');
     if (!container) return;
@@ -407,7 +470,8 @@ function showProgressiveLoading(total, isFetching) {
     const countDisplay = isFetching ? '' : `<strong id="loadingCount">0</strong> / <strong id="loadingTotal">${total}</strong>`;
     
     let html = `<div class="loading-progress" id="loadingProgress"><div class="spinner-small"></div><span id="loadingProgressText">${statusText}${countDisplay}</span></div>`;
-    for (let i = 0; i < Math.min(total, 10); i++) {
+    const skeletonCount = Math.min(total, AppState.batchPageSize || 10);
+    for (let i = 0; i < skeletonCount; i++) {
         html += createSkeletonCard(i);
     }
     container.innerHTML = html;
@@ -700,6 +764,9 @@ window.viewJobResults = viewJobResults;
 window.deleteJob = deleteJob;
 window.toggleAutoRefresh = toggleAutoRefresh;
 window.refreshJobList = refreshJobList;
+window.changeBatchPageSize = changeBatchPageSize;
+window.goToNextJobPage = goToNextJobPage;
+window.goToPrevJobPage = goToPrevJobPage;
 window.closeFileSelectionModal = closeFileSelectionModal;
 window.updateFileSelection = updateFileSelection;
 window.confirmFileSelection = confirmFileSelection;
