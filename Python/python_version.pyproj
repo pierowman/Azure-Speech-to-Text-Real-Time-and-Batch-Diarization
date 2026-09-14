@@ -21,6 +21,7 @@
   <ItemGroup>
     <Content Include=".env" />
     <Content Include=".github\workflows\python-ci.yml" />
+    <Content Include="deploy.ps1" />
     <Content Include="Properties\PublishProfiles\doctranslatecbo-linux.pubxml" />
     <Content Include="requirements.txt" />
     <Content Include="startup-flask.txt" />
