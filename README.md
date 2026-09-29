@@ -199,6 +199,13 @@ speechtotext/
 5. Monitor progress in "Transcription Jobs" tab
 6. Download results when complete
 
+## Sample Audio Files
+
+Need audio files to try out transcription and diarization? Microsoft provides sample audio files in the Azure Speech SDK samples repository. For example, `katiesteve.wav` is a two-speaker recording that's great for testing diarization:
+
+- [katiesteve.wav](https://github.com/Azure-Samples/cognitive-services-speech-sdk/blob/master/sampledata/audiofiles/katiesteve.wav)
+- [Browse all sample audio files](https://github.com/Azure-Samples/cognitive-services-speech-sdk/tree/master/sampledata/audiofiles)
+
 ## Testing
 
 ```bash
