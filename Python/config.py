@@ -1,9 +1,10 @@
 """
 Configuration settings for the Speech-to-Text application
 """
+from __future__ import annotations
+
 import os
 from dotenv import load_dotenv
-from azure.identity import DefaultAzureCredential
 
 # Load environment variables from .env file
 load_dotenv()
@@ -175,6 +176,10 @@ class Config:
         sign-in for local development. Set AZURE_CLIENT_ID for a user-assigned
         managed identity; leave it blank for system-assigned or local sign-in.
         """
+        # Imported lazily so the (heavy) azure.identity package is only loaded
+        # when a credential is actually needed, not at application startup.
+        from azure.identity import DefaultAzureCredential
+
         credential_kwargs = {'authority': self.AUTHORITY_HOST}
         if self.AZURE_CLIENT_ID:
             credential_kwargs['managed_identity_client_id'] = self.AZURE_CLIENT_ID

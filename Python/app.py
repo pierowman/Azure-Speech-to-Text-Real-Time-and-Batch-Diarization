@@ -229,6 +229,19 @@ def favicon() -> Response:
     return Response(status=204)
 
 
+@app.route('/robots933456.txt')
+@app.route('/robots.txt')
+@limiter.exempt
+def robots() -> Response:
+    """Answer the Azure App Service warm-up/health probe (and crawlers).
+
+    Azure pings the magic '/robots933456.txt' path on every container purely to
+    confirm it is responding; a 404 is treated as healthy but shows up as noise
+    in the logs. Returning 204 keeps the probe happy without the 404 chatter.
+    """
+    return Response(status=204)
+
+
 @app.route('/upload-and-transcribe', methods=['POST'])
 @csrf.exempt  # TODO: Add CSRF token to form
 def upload_and_transcribe() -> Response:
@@ -996,4 +1009,6 @@ if __name__ == '__main__':
     logger.info(f"Is Configured: {config.IS_CONFIGURED}")
     
     # Run app
-    app.run(debug=config.DEBUG, host='0.0.0.0', port=5000)
+    # use_reloader=False avoids Werkzeug spawning a second process that
+    # re-imports the whole app (and the heavy Azure SDKs) on every launch.
+    app.run(debug=config.DEBUG, host='0.0.0.0', port=5000, use_reloader=False)

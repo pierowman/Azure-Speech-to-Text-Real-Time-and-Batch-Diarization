@@ -1,14 +1,14 @@
 """
 Azure Batch Transcription Service
 """
+from __future__ import annotations
+
 import logging
 import json
 import asyncio
 import requests
-import aiohttp
 from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
-from azure.storage.blob import BlobServiceClient
 from models import TranscriptionJob, LocaleInfo, TranscriptionProperties
 from config import config
 
@@ -49,13 +49,14 @@ class BatchTranscriptionService:
         self.models_base_url = f"{endpoint}/speechtotext/v3.2"
 
         # Microsoft Entra ID credential (Managed Identity in Azure, Azure CLI / VS Code sign-in locally)
-        self._credential = config.create_credential()
+        # Created lazily on first use so azure.identity isn't loaded at startup.
+        self._cached_credential = None
         self._speech_token = None
         self._speech_token_expires_on = 0
 
         # PERFORMANCE: Create persistent requests session with connection pooling
         self.session = requests.Session()
-        
+
         # Configure connection pooling adapter
         adapter = requests.adapters.HTTPAdapter(
             pool_connections=10,      # Number of connection pools to cache
@@ -66,23 +67,40 @@ class BatchTranscriptionService:
         self.session.mount('https://', adapter)
         self.session.mount('http://', adapter)
         logger.info("HTTP connection pooling enabled (10 pools, 20 connections)")
-        
+
         # PERFORMANCE: aiohttp session for async requests (created on demand)
         self._aiohttp_session: Optional[aiohttp.ClientSession] = None
         self._aiohttp_session_loop: Optional[asyncio.AbstractEventLoop] = None
-        
-        # Initialize Blob Storage if configured
-        self.blob_service_client = None
-        if config.IS_CONFIGURED:
-            try:
-                self.blob_service_client = self._create_blob_service_client()
-                logger.info("Azure Blob Storage client initialized successfully")
-            except Exception as ex:
-                logger.error(f"Failed to initialize Azure Blob Storage client: {ex}")
-                self.blob_service_client = None
-        else:
-            logger.info("Azure Blob Storage is not configured. Using placeholder mode.")
-    
+
+        # Blob Storage client is created lazily on first access so that the
+        # azure.storage.blob SDK (and a credential/token) are only loaded when
+        # blob storage is actually used, keeping application startup fast.
+        self._blob_service_client = None
+        self._blob_client_initialized = False
+
+    @property
+    def _credential(self):
+        """Lazily create and cache the Entra ID credential."""
+        if self._cached_credential is None:
+            self._cached_credential = config.create_credential()
+        return self._cached_credential
+
+    @property
+    def blob_service_client(self):
+        """Lazily create and cache the Azure Blob Storage client."""
+        if not self._blob_client_initialized:
+            self._blob_client_initialized = True
+            if config.IS_CONFIGURED:
+                try:
+                    self._blob_service_client = self._create_blob_service_client()
+                    logger.info("Azure Blob Storage client initialized successfully")
+                except Exception as ex:
+                    logger.error(f"Failed to initialize Azure Blob Storage client: {ex}")
+                    self._blob_service_client = None
+            else:
+                logger.info("Azure Blob Storage is not configured. Using placeholder mode.")
+        return self._blob_service_client
+
     def _get_speech_token(self) -> str:
         """Get a cached Entra ID bearer token for the Speech (Cognitive Services) REST API."""
         import time
@@ -103,6 +121,8 @@ class BatchTranscriptionService:
 
     def _create_blob_service_client(self) -> BlobServiceClient:
         """Create BlobServiceClient using Microsoft Entra ID authentication"""
+        from azure.storage.blob import BlobServiceClient
+
         blob_service_uri = config.BLOB_SERVICE_ENDPOINT
         audience = config.STORAGE_AUDIENCE
 
@@ -126,6 +146,8 @@ class BatchTranscriptionService:
         track the loop the session belongs to and recreate the session whenever the
         current running loop differs or the previous loop has been closed.
         """
+        import aiohttp
+
         current_loop = asyncio.get_running_loop()
 
         needs_new_session = (

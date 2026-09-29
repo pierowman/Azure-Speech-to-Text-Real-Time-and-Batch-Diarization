@@ -1,11 +1,12 @@
 """
 Azure Speech-to-Text service with diarization support
 """
+from __future__ import annotations
+
 import logging
 import json
 import time
 from typing import Optional
-import azure.cognitiveservices.speech as speechsdk
 from models import TranscriptionResult, SpeakerSegment, SpeakerInfo
 from exceptions import TranscriptionException, AzureServiceException
 from config import config
@@ -29,10 +30,20 @@ class SpeechToTextService:
             raise ValueError("AZURE_SPEECH_RESOURCE_ID is required for Microsoft Entra ID authentication")
 
         # Microsoft Entra ID credential (Managed Identity in Azure, Azure CLI / VS Code sign-in locally)
-        self._credential = config.create_credential()
-    
+        # Created lazily on first use so azure.identity isn't loaded at startup.
+        self._cached_credential = None
+
+    @property
+    def _credential(self):
+        """Lazily create and cache the Entra ID credential."""
+        if self._cached_credential is None:
+            self._cached_credential = config.create_credential()
+        return self._cached_credential
+
     def _create_speech_config(self) -> speechsdk.SpeechConfig:
         """Create Azure Speech SDK configuration"""
+        import azure.cognitiveservices.speech as speechsdk
+
         logger.info(f"Creating speech config - Region: {self.region}")
         logger.info(f"Custom endpoint configured: {self.endpoint if self.endpoint else 'None'}")
 
@@ -72,8 +83,9 @@ class SpeechToTextService:
         """
         if not audio_file_path:
             raise ValueError("Audio file path cannot be empty")
-        
+
         import os
+        import azure.cognitiveservices.speech as speechsdk
         if not os.path.exists(audio_file_path):
             raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
         
