@@ -126,7 +126,11 @@ class SpeechToTextService:
             has_error = False
             error_message = None
             done = False
-            
+            # True only once the service has fully processed the audio (EndOfStream).
+            # Without this, a connection failure can stop the session silently with zero
+            # segments and be misreported as a successful "no speech detected" result.
+            received_end_of_stream = False
+
             def transcribed_callback(evt: speechsdk.SessionEventArgs):
                 """Handle transcribed events"""
                 nonlocal segments
@@ -162,7 +166,7 @@ class SpeechToTextService:
             
             def canceled_callback(evt: speechsdk.SessionEventArgs):
                 """Handle canceled events"""
-                nonlocal has_error, error_message, done
+                nonlocal has_error, error_message, done, received_end_of_stream
                 
                 cancellation_details = evt.cancellation_details
                 
@@ -183,6 +187,7 @@ class SpeechToTextService:
                 if cancellation_details.reason == speechsdk.CancellationReason.EndOfStream:
                     logger.info("Audio stream ended normally (EndOfStream). This is expected behavior.")
                     # Don't set has_error - this is normal completion
+                    received_end_of_stream = True
                     done = True
                     return
                 
@@ -244,7 +249,21 @@ class SpeechToTextService:
             
             conversation_transcriber.stop_transcribing_async().get()
             logger.info(f"Transcription completed. Segments collected: {len(segments)}")
-            
+
+            # Guard against a silent failure to reach the Speech service. If the session
+            # ended without an explicit error, without any recognized segments, AND without
+            # receiving EndOfStream, the service was never actually able to process the
+            # audio (e.g. network/connection failure). Treat this as an error instead of
+            # falsely reporting a successful "no speech detected" result.
+            if not has_error and not received_end_of_stream and len(segments) == 0:
+                has_error = True
+                error_message = (
+                    "Could not reach the Azure Speech service. The transcription session "
+                    "ended without processing the audio (no response received). Verify network "
+                    "connectivity, the endpoint/region, and that the service is available."
+                )
+                logger.error(error_message)
+
             # Filter out segments where speaker is "Unknown" and text is empty
             filtered_segments = [
                 s for s in segments

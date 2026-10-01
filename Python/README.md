@@ -126,6 +126,60 @@ pip install gunicorn
 gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 app:app
 ```
 
+## ?? Verifying Connectivity & Permissions
+
+Before (or after) deploying, you can validate that the three Azure resources this
+app depends on are reachable and have the **correct Microsoft Entra ID (RBAC) role
+assignments** using the included **read-only** diagnostic script:
+
+```powershell
+cd Python
+./Verify-Connectivity.ps1
+```
+
+The script reads the same `.env` file the app uses (so it checks exactly what the
+app will use at runtime), is **cloud-aware** (`AzureCloud` / `AzureUSGovernment`),
+and makes **no changes** to any resource. For each resource it verifies existence
+and provisioning state, network reachability (TCP 443 to the data-plane endpoint,
+including the real-time Speech host), and the data-plane roles the app relies on:
+
+| Identity | Target resource | Required data-plane role |
+|----------|-----------------|--------------------------|
+| App Service managed identity | Speech (Cognitive Services) | `Cognitive Services Speech User` / `Cognitive Services User` |
+| App Service managed identity | Blob Storage | `Storage Blob Data Contributor` (upload) |
+| Speech resource managed identity | Blob Storage | `Storage Blob Data Reader` (read batch audio) |
+
+It supports both **system-assigned** and **user-assigned** managed identities
+(the latter via `AZURE_CLIENT_ID`), and flags management-plane-only roles
+(`Owner` / `Contributor`) as warnings because they do **not** grant data access.
+At the end it prints a summary table and **exits non-zero** if any critical check
+fails, so it can be used in CI / smoke tests.
+
+**Prerequisites:** the Azure CLI (`az`) signed in (`az login`) and PowerShell
+(Windows PowerShell or `pwsh`).
+
+**Common parameters:**
+
+```powershell
+# Validate configuration locally, before the app is deployed
+./Verify-Connectivity.ps1 -SkipAppService
+
+# Point at a specific environment / app
+./Verify-Connectivity.ps1 -EnvFile .\.env.production -AppName my-app -ResourceGroup my-rg
+
+# Skip the public HTTP 200 home-page check
+./Verify-Connectivity.ps1 -SkipHttpCheck
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `-EnvFile` | Path to the `.env` file to read (default: `.env` next to the script). |
+| `-AppName` | App Service (Web App) name. |
+| `-ResourceGroup` | Resource group containing the App Service. |
+| `-SubscriptionId` | Subscription to target (falls back to `AZURE_SUBSCRIPTION_ID`, then the `az` default). |
+| `-SkipAppService` | Skip all App Service checks (useful for local, pre-deploy validation). |
+| `-SkipHttpCheck` | Skip the public HTTP 200 check against the App Service home page. |
+
 ## ?? Configuration
 
 All configuration is done through environment variables. See `.env.example` for all available options.
@@ -220,6 +274,10 @@ Consider integrating with:
 
 ## ?? Troubleshooting
 
+> **Tip:** Many connectivity and permission problems can be diagnosed in one step
+> with the included `Verify-Connectivity.ps1` script — see
+> [Verifying Connectivity & Permissions](#-verifying-connectivity--permissions).
+
 ### Common Issues
 
 **1. Configuration validation errors on startup**
@@ -231,6 +289,7 @@ Make sure all required environment variables are set in `.env`. Check the error 
 - Verify your Azure credentials are correct
 - Check if the Speech API key has the correct permissions
 - For Managed Identity: ensure the identity has "Cognitive Services User" role
+- Run `./Verify-Connectivity.ps1` to confirm the app identity has the required Speech role
 
 **3. File upload failures**
 
@@ -243,6 +302,11 @@ Make sure all required environment variables are set in `.env`. Check the error 
 - Verify `ENABLE_BLOB_STORAGE=true` in `.env`
 - Check Azure Storage account credentials
 - Ensure container exists or app has permission to create it
+- Run `./Verify-Connectivity.ps1` to confirm the app identity has `Storage Blob Data Contributor` and the Speech identity has `Storage Blob Data Reader`
+
+**5. Real-time transcription fails to connect to the Speech service**
+
+- Run `./Verify-Connectivity.ps1` to check the real-time Speech host (`<region>.stt.speech.microsoft.com`) is reachable on TCP 443 and that the app identity has the `Cognitive Services Speech User` / `Cognitive Services User` role
 
 ## ?? Documentation
 

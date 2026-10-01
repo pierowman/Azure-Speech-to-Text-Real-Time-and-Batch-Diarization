@@ -152,6 +152,7 @@
     <Content Include="static\uploads\fc2957b5-6d55-468a-8abc-80ffbba48b38.wav" />
     <Content Include="static\uploads\fd4fa9a6-2e97-466f-ad63-489c2816f131.wav" />
     <Content Include="templates\index.html" />
+    <Content Include="Verify-Connectivity.ps1" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="app.py" />
