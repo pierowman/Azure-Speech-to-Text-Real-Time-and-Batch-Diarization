@@ -24,7 +24,7 @@ class Config:
     AZURE_SUBSCRIPTION_ID = os.getenv('AZURE_SUBSCRIPTION_ID')
     AZURE_RESOURCE_GROUP = os.getenv('AZURE_RESOURCE_GROUP')
     AZURE_SPEECH_RESOURCE_NAME = os.getenv('AZURE_SPEECH_RESOURCE_NAME')
-    
+
     # Azure Cloud - 'AzureCloud' (commercial) or 'AzureUSGovernment'
     AZURE_CLOUD = os.getenv('AZURE_CLOUD', 'AzureCloud')
 
@@ -104,6 +104,14 @@ class Config:
     # transparently recovers from this instead of surfacing a spurious failure.
     TRANSCRIPTION_MAX_ATTEMPTS = int(os.getenv('TRANSCRIPTION_MAX_ATTEMPTS', 3))
     TRANSCRIPTION_RETRY_DELAY_SECONDS = float(os.getenv('TRANSCRIPTION_RETRY_DELAY_SECONDS', 1.0))
+
+    # When true, the real-time ConversationTranscriber enables the Speech SDK's
+    # native trace log and, on a session that ends with no response (silent
+    # cancel), writes the tail of that trace to the application log. This exposes
+    # the underlying WebSocket / authentication / connection failure that the
+    # Python SDK surface otherwise hides. Safe to leave on; turn off to reduce
+    # log volume once real-time is confirmed healthy in all clouds.
+    ENABLE_SPEECH_SDK_TRACE = os.getenv('ENABLE_SPEECH_SDK_TRACE', 'true').lower() == 'true'
     
     @property
     def _cloud(self):
@@ -153,6 +161,20 @@ class Config:
         return ""
 
     @property
+    def REALTIME_SPEECH_ENDPOINT(self):
+        """Endpoint used by the real-time Speech SDK (ConversationTranscriber).
+
+        Uses the resource's custom-domain endpoint
+        (https://<resource-name>.cognitiveservices.azure.<suffix>/), the same
+        cloud-aware endpoint used for batch. Microsoft Entra ID (token credential)
+        authentication REQUIRES this custom-subdomain endpoint; a region-based
+        WebSocket host (wss://<region>.stt.speech.<suffix>) cannot authenticate
+        with a bearer token and causes the session to cancel silently with zero
+        segments.
+        """
+        return self.AZURE_SPEECH_ENDPOINT
+
+    @property
     def AUTHORITY_HOST(self):
         """Get the Entra ID (AAD) authority host for the selected cloud"""
         return self._cloud['authority_host']
@@ -162,13 +184,6 @@ class Config:
         """Get the Cognitive Services endpoint suffix for the selected cloud"""
         return self._cloud['cognitive_suffix']
 
-    @property
-    def SPEECH_HOST(self):
-        """Get the real-time Speech SDK host URL for the selected cloud"""
-        if self.AZURE_SPEECH_REGION:
-            return f"wss://{self.AZURE_SPEECH_REGION}.{self._cloud['speech_host_suffix']}"
-        return ""
-    
     @property
     def IS_CONFIGURED(self):
         """Check if Azure Storage is properly configured"""

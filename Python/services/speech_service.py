@@ -42,7 +42,10 @@ class SpeechToTextService:
     
     def __init__(self):
         self.region = config.AZURE_SPEECH_REGION
-        self.endpoint = config.AZURE_SPEECH_ENDPOINT
+        # Real-time connects to the region-based WebSocket host, built cloud-aware
+        # from the region and Azure cloud (commercial vs US Government). The SDK
+        # cannot reliably derive this from the custom domain in sovereign clouds.
+        self.endpoint = config.REALTIME_SPEECH_ENDPOINT
         self.resource_id = config.AZURE_SPEECH_RESOURCE_ID
         self.default_locale = config.DEFAULT_LOCALE
         self.poll_interval = config.TRANSCRIPTION_POLL_INTERVAL_SECONDS
@@ -86,11 +89,14 @@ class SpeechToTextService:
         import azure.cognitiveservices.speech as speechsdk
 
         logger.info(f"Creating speech config - Region: {self.region}")
-        logger.info(f"Custom endpoint configured: {self.endpoint if self.endpoint else 'None'}")
+        logger.info(
+            f"Real-time Speech endpoint: {self.endpoint or 'None'} "
+            f"(cloud: {config.AZURE_CLOUD})"
+        )
 
         # Microsoft Entra ID authentication for SpeechRecognizer / ConversationTranscriber:
-        # pass the TokenCredential directly together with the resource's custom-subdomain
-        # endpoint (https://<resource-name>.cognitiveservices.azure.com/). The SDK acquires
+        # pass the TokenCredential directly together with the region-based real-time
+        # WebSocket endpoint (wss://<region>.stt.speech.<cloud-suffix>). The SDK acquires
         # and refreshes the token internally. This is the officially supported pattern; the
         # manual 'aad#<resourceId>#<token>' authorization token does not work reliably with
         # endpoint-based config and results in a silent cancel with no segments.
@@ -103,8 +109,8 @@ class SpeechToTextService:
             endpoint=self.endpoint
         )
         logger.info(
-            f"Using custom-domain endpoint with TokenCredential "
-            f"(scope: {config.COGNITIVE_SCOPE}): {self.endpoint}"
+            f"Real-time SpeechConfig created with TokenCredential "
+            f"(scope: {config.COGNITIVE_SCOPE}), endpoint: {self.endpoint}"
         )
 
         return speech_config
@@ -118,9 +124,30 @@ class SpeechToTextService:
         cold-connection cancel rather than genuinely empty audio.
         """
         import azure.cognitiveservices.speech as speechsdk
+        import os
+        import tempfile
 
         speech_config = self._create_speech_config()
         speech_config.speech_recognition_language = selected_locale
+
+        # Optionally enable the Speech SDK's native trace log. A failed real-time
+        # session can stop cleanly with zero segments and NO canceled event (a
+        # "silent cancel"), leaving the Python layer with no error to report. The
+        # native SDK log captures the underlying WebSocket handshake / auth /
+        # connection failure, which is the only way to diagnose that case.
+        sdk_log_path = None
+        if config.ENABLE_SPEECH_SDK_TRACE:
+            try:
+                sdk_log_path = os.path.join(
+                    tempfile.gettempdir(), f"speechsdk_{int(time.time() * 1000)}.log"
+                )
+                speech_config.set_property(
+                    speechsdk.PropertyId.Speech_LogFilename, sdk_log_path
+                )
+                logger.info(f"Speech SDK native trace enabled: {sdk_log_path}")
+            except Exception as log_ex:
+                sdk_log_path = None
+                logger.debug(f"Could not enable Speech SDK trace (non-fatal): {log_ex}")
 
         # Create audio configuration
         audio_config = speechsdk.audio.AudioConfig(filename=audio_file_path)
@@ -236,12 +263,12 @@ class SpeechToTextService:
 
         def session_started_callback(evt: speechsdk.SessionEventArgs):
             """Handle session started event"""
-            logger.debug(f"Session started: {evt.session_id}")
+            logger.info(f"Session started: {evt.session_id}")
 
         def session_stopped_callback(evt: speechsdk.SessionEventArgs):
             """Handle session stopped event"""
             nonlocal done
-            logger.debug(f"Session stopped: {evt.session_id}")
+            logger.info(f"Session stopped: {evt.session_id}")
             done = True
 
         # Connect callbacks
@@ -250,6 +277,20 @@ class SpeechToTextService:
         conversation_transcriber.canceled.connect(canceled_callback)
         conversation_transcriber.session_started.connect(session_started_callback)
         conversation_transcriber.session_stopped.connect(session_stopped_callback)
+
+        # Attach connection-level diagnostics. A silent cancel often corresponds
+        # to the WebSocket connecting and then immediately disconnecting; logging
+        # these events makes that visible even when no canceled event fires.
+        try:
+            connection = speechsdk.Connection.from_recognizer(conversation_transcriber)
+            connection.connected.connect(
+                lambda evt: logger.info(f"Speech service connection established (session: {evt.session_id})")
+            )
+            connection.disconnected.connect(
+                lambda evt: logger.warning(f"Speech service connection dropped (session: {evt.session_id})")
+            )
+        except Exception as conn_ex:
+            logger.debug(f"Could not attach connection diagnostics (non-fatal): {conn_ex}")
 
         # Start transcription
         conversation_transcriber.start_transcribing_async().get()
@@ -261,6 +302,30 @@ class SpeechToTextService:
 
         conversation_transcriber.stop_transcribing_async().get()
         logger.info(f"Transcription completed. Segments collected: {len(segments)}")
+
+        # On a silent cancel (session stopped cleanly with no error, no
+        # EndOfStream and zero segments) dump the tail of the SDK native log so
+        # the real WebSocket/auth/connection failure is visible in app logs.
+        silent_cancel = (
+            not has_error and not received_end_of_stream and len(segments) == 0
+        )
+        if sdk_log_path:
+            try:
+                if silent_cancel and os.path.exists(sdk_log_path):
+                    with open(sdk_log_path, 'r', errors='replace') as fh:
+                        tail = fh.readlines()[-80:]
+                    logger.warning(
+                        "Speech SDK native trace (tail) for session that ended "
+                        "with no response:\n" + "".join(tail)
+                    )
+            except Exception as read_ex:
+                logger.debug(f"Could not read Speech SDK trace log (non-fatal): {read_ex}")
+            finally:
+                try:
+                    if os.path.exists(sdk_log_path):
+                        os.remove(sdk_log_path)
+                except Exception:
+                    pass
 
         return segments, has_error, error_message, received_end_of_stream
 
