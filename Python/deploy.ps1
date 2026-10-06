@@ -380,7 +380,15 @@ try {
 		--name $AppName --resource-group $ResourceGroup `
 		--src-path $zip --type zip `
 		--track-status false --async true -o json
-	$deploy = $deployJson | ConvertFrom-Json
+
+	# 'az webapp deploy' can emit non-JSON warning/progress lines (e.g. the
+	# 32-bit cryptography notice or a deployment status hint) ahead of the JSON
+	# payload. Isolate the JSON object before parsing so a stray leading line
+	# doesn't break ConvertFrom-Json.
+	$deployText  = ($deployJson -join "`n")
+	$jsonStart   = $deployText.IndexOfAny([char[]]@('{', '['))
+	if ($jsonStart -ge 0) { $deployText = $deployText.Substring($jsonStart) }
+	$deploy = $deployText | ConvertFrom-Json
 
 	# Kudu deployment status: 4 = Success, 3 = Failed.
 	if ($deploy.status -eq 4 -and $deploy.complete) {

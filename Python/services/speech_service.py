@@ -14,6 +14,29 @@ from config import config
 logger = logging.getLogger(__name__)
 
 
+class _ScopedTokenCredential:
+    """Wrap a TokenCredential to force the Cognitive Services token scope.
+
+    The Speech SDK always requests the hard-coded commercial scope
+    ``https://cognitiveservices.azure.com/.default`` when it is handed a
+    ``token_credential`` (see ``_Constants.TokenRequestScopes`` in the SDK).
+    In sovereign clouds such as Azure US Government, the Speech endpoint only
+    accepts tokens issued for that cloud's audience
+    (e.g. ``https://cognitiveservices.azure.us/.default``). A commercial-audience
+    token is rejected by the Gov endpoint, which surfaces as a silent cancel with
+    zero recognized segments. This wrapper ignores the scope requested by the SDK
+    and substitutes the correct cloud-aware scope. For commercial the scope is
+    identical, so this is a no-op there.
+    """
+
+    def __init__(self, inner, scope: str):
+        self._inner = inner
+        self._scope = scope
+
+    def get_token(self, *scopes, **kwargs):
+        return self._inner.get_token(self._scope, **kwargs)
+
+
 class SpeechToTextService:
     """Service for real-time speech transcription with diarization"""
     
@@ -23,6 +46,8 @@ class SpeechToTextService:
         self.resource_id = config.AZURE_SPEECH_RESOURCE_ID
         self.default_locale = config.DEFAULT_LOCALE
         self.poll_interval = config.TRANSCRIPTION_POLL_INTERVAL_SECONDS
+        self.max_transcription_attempts = max(1, config.TRANSCRIPTION_MAX_ATTEMPTS)
+        self.transcription_retry_delay_seconds = config.TRANSCRIPTION_RETRY_DELAY_SECONDS
 
         if not self.region:
             raise ValueError("Azure Speech region not found in configuration")
@@ -40,6 +65,22 @@ class SpeechToTextService:
             self._cached_credential = config.create_credential()
         return self._cached_credential
 
+    def _warm_up_credential(self) -> None:
+        """Pre-acquire an Entra ID token before starting transcription.
+
+        On a cold App Service instance the first ``get_token`` call walks the
+        DefaultAzureCredential chain, which can be slow enough that the first
+        ConversationTranscriber session stops before it is authenticated,
+        producing a silent cancel with zero segments. Fetching (and caching) a
+        token up front removes that race from the first real attempt.
+        """
+        try:
+            self._credential.get_token(config.COGNITIVE_SCOPE)
+            logger.debug("Entra ID credential warmed up for transcription")
+        except Exception as ex:
+            # Non-fatal: the transcription path will surface any real auth error.
+            logger.debug(f"Credential warm-up skipped/failed (non-fatal): {ex}")
+
     def _create_speech_config(self) -> speechsdk.SpeechConfig:
         """Create Azure Speech SDK configuration"""
         import azure.cognitiveservices.speech as speechsdk
@@ -53,14 +94,176 @@ class SpeechToTextService:
         # and refreshes the token internally. This is the officially supported pattern; the
         # manual 'aad#<resourceId>#<token>' authorization token does not work reliably with
         # endpoint-based config and results in a silent cancel with no segments.
+        # Force the cloud-correct Cognitive Services token scope. The SDK otherwise
+        # always requests the commercial audience, which the Azure US Government
+        # Speech endpoint rejects (silent cancel, zero segments).
+        scoped_credential = _ScopedTokenCredential(self._credential, config.COGNITIVE_SCOPE)
         speech_config = speechsdk.SpeechConfig(
-            token_credential=self._credential,
+            token_credential=scoped_credential,
             endpoint=self.endpoint
         )
-        logger.info(f"Using custom-domain endpoint with TokenCredential: {self.endpoint}")
+        logger.info(
+            f"Using custom-domain endpoint with TokenCredential "
+            f"(scope: {config.COGNITIVE_SCOPE}): {self.endpoint}"
+        )
 
         return speech_config
-    
+
+    def _run_transcription_session(self, audio_file_path: str, selected_locale: str):
+        """Run a single ConversationTranscriber session over the audio file.
+
+        Returns a tuple ``(segments, has_error, error_message,
+        received_end_of_stream)``. Callers may retry when the session returns no
+        error, no EndOfStream and zero segments, which indicates a silent
+        cold-connection cancel rather than genuinely empty audio.
+        """
+        import azure.cognitiveservices.speech as speechsdk
+
+        speech_config = self._create_speech_config()
+        speech_config.speech_recognition_language = selected_locale
+
+        # Create audio configuration
+        audio_config = speechsdk.audio.AudioConfig(filename=audio_file_path)
+        logger.debug(f"Audio config created for: {audio_file_path}")
+
+        # Create conversation transcriber
+        logger.debug("Creating ConversationTranscriber...")
+        conversation_transcriber = speechsdk.transcription.ConversationTranscriber(
+            speech_config=speech_config,
+            audio_config=audio_config
+        )
+        logger.debug("ConversationTranscriber created")
+
+        segments = []
+        has_error = False
+        error_message = None
+        done = False
+        # True only once the service has fully processed the audio (EndOfStream).
+        # Without this, a connection failure can stop the session silently with zero
+        # segments and be misreported as a successful "no speech detected" result.
+        received_end_of_stream = False
+
+        def transcribed_callback(evt: speechsdk.SessionEventArgs):
+            """Handle transcribed events"""
+            nonlocal segments
+
+            if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                try:
+                    speaker = evt.result.speaker_id if evt.result.speaker_id else "Unknown"
+                    text = evt.result.text
+
+                    logger.debug(f"Segment recognized: Speaker={speaker}, Text length={len(text)}")
+
+                    segment = SpeakerSegment(
+                        speaker=speaker,
+                        original_speaker=speaker,
+                        text=text,
+                        original_text=text,
+                        offset_in_ticks=evt.result.offset,
+                        duration_in_ticks=0  # Will be calculated later
+                    )
+
+                    segments.append(segment)
+                    logger.debug(f"Segment added. Total segments: {len(segments)}")
+
+                except Exception as seg_ex:
+                    logger.error(f"Error creating segment: {seg_ex}", exc_info=True)
+
+            elif evt.result.reason == speechsdk.ResultReason.NoMatch:
+                logger.debug("Speech could not be recognized (NoMatch)")
+
+        def transcribing_callback(evt: speechsdk.SessionEventArgs):
+            """Handle transcribing (intermediate) events"""
+            logger.debug(f"TRANSCRIBING: {evt.result.text}")
+
+        def canceled_callback(evt: speechsdk.SessionEventArgs):
+            """Handle canceled events"""
+            nonlocal has_error, error_message, done, received_end_of_stream
+
+            cancellation_details = evt.cancellation_details
+
+            logger.warning(
+                f"Transcription canceled: {cancellation_details.reason} | "
+                f"Code: {cancellation_details.error_code} | "
+                f"Details: {cancellation_details.error_details}"
+            )
+            if cancellation_details.reason != speechsdk.CancellationReason.EndOfStream:
+                logger.error(
+                    f"Cancellation details - Code: {cancellation_details.error_code}, "
+                    f"Details: {cancellation_details.error_details}"
+                )
+            else:
+                logger.debug(f"Error code: {cancellation_details.error_code}, Details: {cancellation_details.error_details}")
+
+            # EndOfStream is NOT an error - it means the audio file finished successfully
+            if cancellation_details.reason == speechsdk.CancellationReason.EndOfStream:
+                logger.info("Audio stream ended normally (EndOfStream). This is expected behavior.")
+                # Don't set has_error - this is normal completion
+                received_end_of_stream = True
+                done = True
+                return
+
+            # Only treat as error if the reason is actually Error
+            if cancellation_details.reason == speechsdk.CancellationReason.Error:
+                has_error = True
+
+                # Create specific error messages based on error code
+                error_code = cancellation_details.error_code
+                error_details = cancellation_details.error_details
+
+                if error_code == speechsdk.CancellationErrorCode.AuthenticationFailure:
+                    error_message = f"Authentication failed: Invalid subscription key or region. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.BadRequest:
+                    error_message = f"Bad request: The audio format may not be supported or the endpoint doesn't support ConversationTranscriber. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.ConnectionFailure:
+                    error_message = f"Connection failed: Unable to connect to Azure Speech Service. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.ServiceTimeout:
+                    error_message = f"Service timeout: The request took too long. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.TooManyRequests:
+                    error_message = f"Too many requests: Quota exceeded. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.Forbidden:
+                    error_message = f"Forbidden: Access denied. Check if ConversationTranscriber is enabled for your subscription. Details: {error_details}"
+                elif error_code == speechsdk.CancellationErrorCode.ServiceUnavailable:
+                    error_message = f"Service unavailable: Try again later. Details: {error_details}"
+                else:
+                    error_message = f"Error during transcription (Code: {error_code}): {error_details}"
+            else:
+                # Other cancellation reasons that aren't EndOfStream or Error
+                error_message = f"Transcription canceled: {cancellation_details.reason}"
+                has_error = True
+
+            done = True
+
+        def session_started_callback(evt: speechsdk.SessionEventArgs):
+            """Handle session started event"""
+            logger.debug(f"Session started: {evt.session_id}")
+
+        def session_stopped_callback(evt: speechsdk.SessionEventArgs):
+            """Handle session stopped event"""
+            nonlocal done
+            logger.debug(f"Session stopped: {evt.session_id}")
+            done = True
+
+        # Connect callbacks
+        conversation_transcriber.transcribed.connect(transcribed_callback)
+        conversation_transcriber.transcribing.connect(transcribing_callback)
+        conversation_transcriber.canceled.connect(canceled_callback)
+        conversation_transcriber.session_started.connect(session_started_callback)
+        conversation_transcriber.session_stopped.connect(session_stopped_callback)
+
+        # Start transcription
+        conversation_transcriber.start_transcribing_async().get()
+        logger.info("Transcription started")
+
+        # Wait for completion with configurable polling interval
+        while not done:
+            time.sleep(self.poll_interval)
+
+        conversation_transcriber.stop_transcribing_async().get()
+        logger.info(f"Transcription completed. Segments collected: {len(segments)}")
+
+        return segments, has_error, error_message, received_end_of_stream
+
     def transcribe_with_diarization(
         self, 
         audio_file_path: str, 
@@ -85,7 +288,6 @@ class SpeechToTextService:
             raise ValueError("Audio file path cannot be empty")
 
         import os
-        import azure.cognitiveservices.speech as speechsdk
         if not os.path.exists(audio_file_path):
             raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
         
@@ -101,160 +303,47 @@ class SpeechToTextService:
             )
         
         result = TranscriptionResult()
-        segments = []
-        
+
         try:
             # Log transcription start
             logger.info(f"Starting real-time transcription: {audio_file_path} (locale: {selected_locale})")
             logger.debug(f"Region: {self.region}, Endpoint: {self.endpoint or 'default'}")
-            
-            speech_config = self._create_speech_config()
-            speech_config.speech_recognition_language = selected_locale
-            
-            # Create audio configuration
-            audio_config = speechsdk.audio.AudioConfig(filename=audio_file_path)
-            logger.debug(f"Audio config created for: {audio_file_path}")
-            
-            # Create conversation transcriber
-            logger.debug("Creating ConversationTranscriber...")
-            conversation_transcriber = speechsdk.transcription.ConversationTranscriber(
-                speech_config=speech_config,
-                audio_config=audio_config
-            )
-            logger.debug("ConversationTranscriber created")
-            
+
+            # Proactively acquire an Entra ID token so the first attempt isn't
+            # racing a slow credential-chain probe on a cold instance.
+            self._warm_up_credential()
+
+            # A cold ConversationTranscriber connection occasionally stops the
+            # session cleanly before any audio is processed: no error, no
+            # EndOfStream and zero segments. Retrying the session transparently
+            # recovers from this instead of surfacing a spurious failure.
+            segments = []
             has_error = False
             error_message = None
-            done = False
-            # True only once the service has fully processed the audio (EndOfStream).
-            # Without this, a connection failure can stop the session silently with zero
-            # segments and be misreported as a successful "no speech detected" result.
             received_end_of_stream = False
 
-            def transcribed_callback(evt: speechsdk.SessionEventArgs):
-                """Handle transcribed events"""
-                nonlocal segments
-                
-                if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
-                    try:
-                        speaker = evt.result.speaker_id if evt.result.speaker_id else "Unknown"
-                        text = evt.result.text
-                        
-                        logger.debug(f"Segment recognized: Speaker={speaker}, Text length={len(text)}")
-                        
-                        segment = SpeakerSegment(
-                            speaker=speaker,
-                            original_speaker=speaker,
-                            text=text,
-                            original_text=text,
-                            offset_in_ticks=evt.result.offset,
-                            duration_in_ticks=0  # Will be calculated later
-                        )
-                        
-                        segments.append(segment)
-                        logger.debug(f"Segment added. Total segments: {len(segments)}")
-                        
-                    except Exception as seg_ex:
-                        logger.error(f"Error creating segment: {seg_ex}", exc_info=True)
-                    
-                elif evt.result.reason == speechsdk.ResultReason.NoMatch:
-                    logger.debug("Speech could not be recognized (NoMatch)")
-            
-            def transcribing_callback(evt: speechsdk.SessionEventArgs):
-                """Handle transcribing (intermediate) events"""
-                logger.debug(f"TRANSCRIBING: {evt.result.text}")
-            
-            def canceled_callback(evt: speechsdk.SessionEventArgs):
-                """Handle canceled events"""
-                nonlocal has_error, error_message, done, received_end_of_stream
-                
-                cancellation_details = evt.cancellation_details
-                
-                logger.warning(
-                    f"Transcription canceled: {cancellation_details.reason} | "
-                    f"Code: {cancellation_details.error_code} | "
-                    f"Details: {cancellation_details.error_details}"
-                )
-                if cancellation_details.reason != speechsdk.CancellationReason.EndOfStream:
-                    logger.error(
-                        f"Cancellation details - Code: {cancellation_details.error_code}, "
-                        f"Details: {cancellation_details.error_details}"
-                    )
-                else:
-                    logger.debug(f"Error code: {cancellation_details.error_code}, Details: {cancellation_details.error_details}")
-                
-                # EndOfStream is NOT an error - it means the audio file finished successfully
-                if cancellation_details.reason == speechsdk.CancellationReason.EndOfStream:
-                    logger.info("Audio stream ended normally (EndOfStream). This is expected behavior.")
-                    # Don't set has_error - this is normal completion
-                    received_end_of_stream = True
-                    done = True
-                    return
-                
-                # Only treat as error if the reason is actually Error
-                if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                    has_error = True
-                    
-                    # Create specific error messages based on error code
-                    error_code = cancellation_details.error_code
-                    error_details = cancellation_details.error_details
-                    
-                    if error_code == speechsdk.CancellationErrorCode.AuthenticationFailure:
-                        error_message = f"Authentication failed: Invalid subscription key or region. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.BadRequest:
-                        error_message = f"Bad request: The audio format may not be supported or the endpoint doesn't support ConversationTranscriber. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.ConnectionFailure:
-                        error_message = f"Connection failed: Unable to connect to Azure Speech Service. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.ServiceTimeout:
-                        error_message = f"Service timeout: The request took too long. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.TooManyRequests:
-                        error_message = f"Too many requests: Quota exceeded. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.Forbidden:
-                        error_message = f"Forbidden: Access denied. Check if ConversationTranscriber is enabled for your subscription. Details: {error_details}"
-                    elif error_code == speechsdk.CancellationErrorCode.ServiceUnavailable:
-                        error_message = f"Service unavailable: Try again later. Details: {error_details}"
-                    else:
-                        error_message = f"Error during transcription (Code: {error_code}): {error_details}"
-                else:
-                    # Other cancellation reasons that aren't EndOfStream or Error
-                    error_message = f"Transcription canceled: {cancellation_details.reason}"
-                    has_error = True
-                
-                done = True
-            
-            def session_started_callback(evt: speechsdk.SessionEventArgs):
-                """Handle session started event"""
-                logger.debug(f"Session started: {evt.session_id}")
-            
-            def session_stopped_callback(evt: speechsdk.SessionEventArgs):
-                """Handle session stopped event"""
-                nonlocal done
-                logger.debug(f"Session stopped: {evt.session_id}")
-                done = True
-            
-            # Connect callbacks
-            conversation_transcriber.transcribed.connect(transcribed_callback)
-            conversation_transcriber.transcribing.connect(transcribing_callback)
-            conversation_transcriber.canceled.connect(canceled_callback)
-            conversation_transcriber.session_started.connect(session_started_callback)
-            conversation_transcriber.session_stopped.connect(session_stopped_callback)
-            
-            # Start transcription
-            conversation_transcriber.start_transcribing_async().get()
-            logger.info("Transcription started")
-            
-            # Wait for completion with configurable polling interval
-            while not done:
-                time.sleep(self.poll_interval)
-            
-            conversation_transcriber.stop_transcribing_async().get()
-            logger.info(f"Transcription completed. Segments collected: {len(segments)}")
+            for attempt in range(1, self.max_transcription_attempts + 1):
+                segments, has_error, error_message, received_end_of_stream = \
+                    self._run_transcription_session(audio_file_path, selected_locale)
 
-            # Guard against a silent failure to reach the Speech service. If the session
-            # ended without an explicit error, without any recognized segments, AND without
-            # receiving EndOfStream, the service was never actually able to process the
-            # audio (e.g. network/connection failure). Treat this as an error instead of
-            # falsely reporting a successful "no speech detected" result.
+                silent_cancel = (
+                    not has_error and not received_end_of_stream and len(segments) == 0
+                )
+                if not silent_cancel:
+                    break
+
+                if attempt < self.max_transcription_attempts:
+                    logger.warning(
+                        f"Real-time session ended with no response on attempt "
+                        f"{attempt}/{self.max_transcription_attempts} "
+                        f"(no error, no EndOfStream, 0 segments). Retrying..."
+                    )
+                    time.sleep(self.transcription_retry_delay_seconds)
+
+            # Guard against a persistent silent failure to reach the Speech
+            # service. If even after retries the session never processed the
+            # audio, surface a clear error instead of a false "no speech
+            # detected" result.
             if not has_error and not received_end_of_stream and len(segments) == 0:
                 has_error = True
                 error_message = (

@@ -97,6 +97,13 @@ class Config:
     
     # Polling configuration
     TRANSCRIPTION_POLL_INTERVAL_SECONDS = float(os.getenv('TRANSCRIPTION_POLL_INTERVAL_SECONDS', 0.5))
+
+    # Real-time transcription retry configuration. A cold ConversationTranscriber
+    # connection occasionally stops the session cleanly before any audio is
+    # processed (no error, no EndOfStream, zero segments). Retrying the session
+    # transparently recovers from this instead of surfacing a spurious failure.
+    TRANSCRIPTION_MAX_ATTEMPTS = int(os.getenv('TRANSCRIPTION_MAX_ATTEMPTS', 3))
+    TRANSCRIPTION_RETRY_DELAY_SECONDS = float(os.getenv('TRANSCRIPTION_RETRY_DELAY_SECONDS', 1.0))
     
     @property
     def _cloud(self):
