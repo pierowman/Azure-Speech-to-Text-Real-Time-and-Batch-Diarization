@@ -282,6 +282,18 @@ try {
 	$fileCount = (Get-ChildItem $stage -Recurse -File).Count
 	Write-Ok "Staged $fileCount files"
 
+	# Stamp build metadata so the running app can report exactly which code is
+	# deployed (surfaced by the /version endpoint and the startup log line).
+	$gitCommit = (& git -C $SourceDir rev-parse --short HEAD 2>$null)
+	if (-not $gitCommit) { $gitCommit = 'unknown' }
+	$buildInfo = [ordered]@{
+		version   = '1.1.0'
+		commit    = "$gitCommit".Trim()
+		built_utc = (Get-Date).ToUniversalTime().ToString('o')
+	} | ConvertTo-Json -Compress
+	Set-Content -Path (Join-Path $stage 'build_info.json') -Value $buildInfo -Encoding utf8
+	Write-Ok "Stamped build_info.json (commit $gitCommit)"
+
 	# -----------------------------------------------------------------------
 	# 1b. Prebuilt mode: vendor all dependencies as Linux wheels so nothing is
 	#     pulled down at deploy time. They go into '.python_packages/lib/

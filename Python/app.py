@@ -73,6 +73,40 @@ for _handler in logging.getLogger().handlers:
 
 logger = logging.getLogger(__name__)
 
+# Application build/version marker. 'build_info.json' is written at deploy time
+# by deploy.ps1 (git commit + build timestamp). If it's absent (e.g. local dev)
+# we fall back to a static version so the /version endpoint and the startup log
+# line always work. This lets you validate exactly which code is deployed
+# without digging through the filesystem.
+APP_VERSION = "1.1.0"
+
+
+def _load_build_info() -> Dict[str, Any]:
+    """Load deploy-time build metadata, falling back to static defaults."""
+    info: Dict[str, Any] = {
+        "version": APP_VERSION,
+        "commit": "unknown",
+        "built_utc": "unknown",
+    }
+    try:
+        build_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "build_info.json"
+        )
+        if os.path.exists(build_path):
+            with open(build_path, "r", encoding="utf-8") as fh:
+                info.update(json.load(fh))
+    except Exception as ex:
+        logger.debug(f"Could not read build_info.json (non-fatal): {ex}")
+    return info
+
+
+BUILD_INFO = _load_build_info()
+logger.info(
+    f"App starting - version: {BUILD_INFO.get('version')}, "
+    f"commit: {BUILD_INFO.get('commit')}, built: {BUILD_INFO.get('built_utc')}, "
+    f"cloud: {config.AZURE_CLOUD}"
+)
+
 # Create Flask app
 app = Flask(__name__)
 app.config.from_object(config)
@@ -96,6 +130,16 @@ cache = Cache(app, config={
 
 # Ensure upload folder exists
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+
+
+@app.route('/version')
+@limiter.exempt
+def version_info() -> Response:
+    """Return the deployed build/version info so the running code can be validated."""
+    info = dict(BUILD_INFO)
+    info["cloud"] = config.AZURE_CLOUD
+    info["speech_sdk_trace"] = config.ENABLE_SPEECH_SDK_TRACE
+    return jsonify(info)
 
 
 # ============================================================================
