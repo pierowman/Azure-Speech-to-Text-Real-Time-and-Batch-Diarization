@@ -54,7 +54,9 @@ function setupRealtimeForm() {
         
         const formData = new FormData();
         const audioFile = document.getElementById('audioFile').files[0];
-        
+        const modelSelect = document.getElementById('realtimeModel');
+        const selectedModel = modelSelect ? modelSelect.value : 'azure-speech';
+
         if (!audioFile) {
             showError('Please select an audio file');
             return;
@@ -75,7 +77,8 @@ function setupRealtimeForm() {
         document.getElementById('realtime-tab').appendChild(document.getElementById('resultsSection'));
         
         formData.append('audioFile', audioFile);
-        
+        formData.append('model', selectedModel);
+
         // Disable button and show loading
         transcribeBtn.disabled = true;
         transcribeBtn.textContent = '\u23F3 Transcribing...';
@@ -186,6 +189,8 @@ function setupBatchForm() {
         const formData = new FormData();
         const audioFiles = document.getElementById('batchAudioFiles').files;
         let jobName = document.getElementById('batchJobName').value.trim();
+        const modelSelect = document.getElementById('batchModel');
+        const selectedModel = modelSelect ? modelSelect.value : 'azure-speech';
         const locale = document.getElementById('batchLocale').value;
         const enableDiarization = document.getElementById('enableDiarization').checked;
         const minSpeakers = document.getElementById('minSpeakers').value;
@@ -226,6 +231,7 @@ function setupBatchForm() {
         }
         
         formData.append('jobName', jobName);
+        formData.append('model', selectedModel);
         formData.append('locale', locale);
         formData.append('enableDiarization', enableDiarization);
         formData.append('minSpeakers', minSpeakers);

@@ -27,6 +27,18 @@ class Config:
 
     # Azure Cloud - 'AzureCloud' (commercial) or 'AzureUSGovernment'
     AZURE_CLOUD = os.getenv('AZURE_CLOUD', 'AzureCloud')
+    FEATURES_UNAVAILABLE_IN_AZURE_GOVERNMENT = (
+        'Custom voice',
+        'Personal voice',
+        'Text to speech avatar',
+        'Fast transcription',
+        'Pronunciation assessment',
+        'Custom keyword',
+        'Voice Live',
+        'Live interpreter',
+        'Video translation',
+        'LLM speech',
+    )
 
     # Cloud-specific endpoint suffixes, token audiences, and authorities
     _CLOUD_CONFIG = {
@@ -77,12 +89,14 @@ class Config:
     BATCH_JOB_AUTO_REFRESH_SECONDS = int(os.getenv('BATCH_JOB_AUTO_REFRESH_SECONDS', 60))
 
     # Sovereign-cloud availability must be confirmed before explicitly enabling.
-    ENABLE_FAST_TRANSCRIPTION = os.getenv(
-        'ENABLE_FAST_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')
-    ).lower() == 'true'
-    ENABLE_MAI_TRANSCRIPTION = os.getenv(
-        'ENABLE_MAI_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')
-    ).lower() == 'true'
+    ENABLE_FAST_TRANSCRIPTION = (
+        os.getenv('ENABLE_FAST_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')).lower() == 'true'
+        and AZURE_CLOUD == 'AzureCloud'
+    )
+    ENABLE_MAI_TRANSCRIPTION = (
+        os.getenv('ENABLE_MAI_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')).lower() == 'true'
+        and AZURE_CLOUD == 'AzureCloud'
+    )
     AZURE_MAI_SPEECH_RESOURCE_NAME = os.getenv('AZURE_MAI_SPEECH_RESOURCE_NAME', '').strip()
     AZURE_MAI_SPEECH_REGION = os.getenv('AZURE_MAI_SPEECH_REGION', '').strip()
     # MAI via transcriptions:transcribe (not Voice Live), documented October 2026.
@@ -135,6 +149,11 @@ class Config:
     def _cloud(self):
         """Get the endpoint configuration for the selected Azure cloud"""
         return self._CLOUD_CONFIG.get(self.AZURE_CLOUD, self._CLOUD_CONFIG['AzureCloud'])
+
+    @property
+    def IS_AZURE_GOVERNMENT(self):
+        """Return true when running in Azure Government."""
+        return self.AZURE_CLOUD == 'AzureUSGovernment'
 
     @property
     def BLOB_SERVICE_ENDPOINT(self):
@@ -241,6 +260,51 @@ class Config:
         return (self.ENABLE_BLOB_STORAGE and 
                 bool(self.AZURE_STORAGE_ACCOUNT_NAME) and 
                 bool(self.AZURE_STORAGE_CONTAINER_NAME))
+
+    def get_model_options(self, mode: str):
+        """Return a list of selectable models for each transcription mode.
+
+        This is deliberately server-side and region-aware rather than a generic live
+        Azure discovery API. The Speech service exposes different capability sets by
+        cloud, region, and model family, so the safest pattern is an explicit allowlist
+        that is validated before every request.
+        """
+        normalized_mode = (mode or 'realtime').lower()
+        model_catalog = {
+            'realtime': [
+                {'value': 'azure-speech', 'label': 'Azure Speech (default)', 'default': True},
+            ],
+            'batch': [
+                {'value': 'azure-speech', 'label': 'Azure Speech (default)', 'default': True},
+            ],
+            'fast': [
+                {'value': 'azure-speech', 'label': 'Azure Speech (default)', 'default': True},
+                {'value': 'MAI-Transcribe-2', 'label': 'MAI-Transcribe-2', 'default': False},
+            ],
+        }
+        options = model_catalog.get(normalized_mode, model_catalog['realtime'])
+        if normalized_mode == 'fast':
+            if not self.ENABLE_MAI_TRANSCRIPTION:
+                return [option for option in options if option['value'] != 'MAI-Transcribe-2']
+            if self.MAI_UNAVAILABLE_REASON:
+                return [option for option in options if option['value'] != 'MAI-Transcribe-2']
+        return options
+
+    def validate_model_selection(self, mode: str, model: str) -> str:
+        """Validate that a requested model is supported for the selected mode."""
+        from exceptions import ValidationException
+
+        normalized_mode = (mode or 'realtime').lower()
+        selected_model = (model or 'azure-speech').strip()
+        available = {option['value'] for option in self.get_model_options(normalized_mode)}
+        if selected_model not in available:
+            raise ValidationException(
+                f"The selected model '{selected_model}' is not supported for {normalized_mode} transcription. "
+                f"Choose from: {', '.join(sorted(available))}."
+            )
+        if selected_model == 'MAI-Transcribe-2' and self.MAI_UNAVAILABLE_REASON:
+            raise ValidationException(self.MAI_UNAVAILABLE_REASON)
+        return selected_model
 
     def create_credential(self) -> DefaultAzureCredential:
         """Create a DefaultAzureCredential for Microsoft Entra ID authentication.

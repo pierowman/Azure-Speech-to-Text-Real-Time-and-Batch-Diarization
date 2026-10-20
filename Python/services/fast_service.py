@@ -25,8 +25,10 @@ class FastTranscriptionService:
         self._credential = None
 
     def build_definition(self, model: str, locale: str, diarization: bool, style: str) -> dict:
-        if not config.ENABLE_FAST_TRANSCRIPTION:
-            raise ConfigurationException("Fast Transcription is disabled for this environment.")
+        if config.IS_AZURE_GOVERNMENT or not config.ENABLE_FAST_TRANSCRIPTION:
+            raise ConfigurationException(
+                "Fast Transcription is disabled in Azure Government. This feature is unavailable in this cloud."
+            )
         if model not in ('azure-speech', 'MAI-Transcribe-2'):
             raise ValidationException("Select Azure Speech or MAI-Transcribe-2.")
         if model == 'MAI-Transcribe-2' and config.MAI_UNAVAILABLE_REASON:

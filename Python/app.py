@@ -254,19 +254,24 @@ def _save_uploaded_file(audio_file: FileStorage, upload_folder: str) -> str:
 def index():
     """Render main page"""
     return render_template('index.html',
-                         show_transcription_jobs_tab=config.SHOW_TRANSCRIPTION_JOBS_TAB,
-                         enable_batch_transcription=config.ENABLE_BATCH_TRANSCRIPTION,
-                         batch_job_auto_refresh_seconds=config.BATCH_JOB_AUTO_REFRESH_SECONDS,
-                         realtime_allowed_extensions=config.REALTIME_ALLOWED_EXTENSIONS,
-                         batch_allowed_extensions=config.BATCH_ALLOWED_EXTENSIONS,
-                         default_min_speakers=config.DEFAULT_MIN_SPEAKERS,
-                         default_max_speakers=config.DEFAULT_MAX_SPEAKERS,
-                         default_locale=config.DEFAULT_LOCALE,
-                         enable_fast_transcription=config.ENABLE_FAST_TRANSCRIPTION,
-                         enable_mai_transcription=not bool(config.MAI_UNAVAILABLE_REASON),
-                         mai_unavailable_reason=config.MAI_UNAVAILABLE_REASON,
-                         mai_region=config.MAI_SPEECH_REGION,
-                         fast_max_file_size_mb=min(config.FAST_MAX_FILE_SIZE, config.MAX_CONTENT_LENGTH) // (1024 * 1024))
+                           show_transcription_jobs_tab=config.SHOW_TRANSCRIPTION_JOBS_TAB,
+                           enable_batch_transcription=config.ENABLE_BATCH_TRANSCRIPTION,
+                           batch_job_auto_refresh_seconds=config.BATCH_JOB_AUTO_REFRESH_SECONDS,
+                           realtime_allowed_extensions=config.REALTIME_ALLOWED_EXTENSIONS,
+                           batch_allowed_extensions=config.BATCH_ALLOWED_EXTENSIONS,
+                           default_min_speakers=config.DEFAULT_MIN_SPEAKERS,
+                           default_max_speakers=config.DEFAULT_MAX_SPEAKERS,
+                           default_locale=config.DEFAULT_LOCALE,
+                           enable_fast_transcription=config.ENABLE_FAST_TRANSCRIPTION and not config.IS_AZURE_GOVERNMENT,
+                           enable_mai_transcription=not bool(config.MAI_UNAVAILABLE_REASON),
+                           is_azure_government=config.IS_AZURE_GOVERNMENT,
+                           government_unsupported_features=config.FEATURES_UNAVAILABLE_IN_AZURE_GOVERNMENT,
+                           mai_unavailable_reason=config.MAI_UNAVAILABLE_REASON,
+                           mai_region=config.MAI_SPEECH_REGION,
+                           fast_max_file_size_mb=min(config.FAST_MAX_FILE_SIZE, config.MAX_CONTENT_LENGTH) // (1024 * 1024),
+                           realtime_model_options=config.get_model_options('realtime'),
+                           batch_model_options=config.get_model_options('batch'),
+                           fast_model_options=config.get_model_options('fast'))
 
 
 @app.route('/favicon.ico')
@@ -297,21 +302,25 @@ def robots() -> Response:
 def upload_and_transcribe() -> Response:
     """Upload audio file and perform real-time transcription"""
     try:
+        model = config.validate_model_selection('realtime', request.form.get('model', 'azure-speech'))
+        logger.info(f"Selected realtime model: {model}")
+
         # Get uploaded file
         if 'audioFile' not in request.files:
             raise InvalidAudioFileException('No file uploaded')
-        
+
         audio_file = request.files['audioFile']
-        
+
         # Validate file
         audio_file_validator.validate_file(audio_file, mode='realtime')
-        
+
         # Save file
         file_path = _save_uploaded_file(audio_file, config.UPLOAD_FOLDER)
         logger.info(f"File uploaded: {file_path}")
-        
+
         # Transcribe (locale is handled internally and hardcoded to en-US)
         result = speech_to_text_service.transcribe_with_diarization(file_path)
+        result.model = model
         
         # Add audio file URL
         unique_filename = os.path.basename(file_path)
@@ -820,9 +829,11 @@ def create_batch_transcription() -> Response:
             raise InvalidAudioFileException('No files uploaded')
         
         # Get and validate form parameters
+        selected_model = config.validate_model_selection('batch', request.form.get('model', 'azure-speech'))
         job_name = request.form.get('jobName', f"Batch Job {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         locale = request.form.get('locale', config.DEFAULT_LOCALE)
-        
+        logger.info(f"Selected batch model: {selected_model}")
+
         enable_diarization, min_speakers, max_speakers, validation_error = validate_batch_transcription_params(
             request.form.get('enableDiarization', 'true'),
             request.form.get('minSpeakers', str(config.DEFAULT_MIN_SPEAKERS)),

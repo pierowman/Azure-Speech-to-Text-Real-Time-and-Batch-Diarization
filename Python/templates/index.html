@@ -108,6 +108,17 @@
             <p>Real-time, Fast, and Batch transcription with speaker diarization</p>
         </header>
 
+        {% if not is_azure_government %}
+        <div class="feature-availability" style="margin: 0 0 20px; padding: 16px 18px; border: 1px solid #d7dce3; border-radius: 10px; background: #f7f9fc;">
+            <strong style="display:block; margin-bottom: 8px;">Commercial-only features</strong>
+            <ul style="margin: 0; padding-left: 20px; color: #444;">
+                {% for feature in government_unsupported_features %}
+                <li>{{ feature }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
         <div class="main-content">
             <!-- Tab Navigation -->
             <div class="tab-nav" role="tablist" aria-label="Transcription mode selection">
@@ -127,6 +138,15 @@
                 <div class="upload-section">
                     <h2>Upload Audio File (Real-time)</h2>
                     <form id="uploadForm">
+                        <div class="form-group">
+                            <label for="realtimeModel">Model</label>
+                            <select id="realtimeModel" name="model">
+                                {% for option in realtime_model_options %}
+                                <option value="{{ option.value }}" {% if option.get('default') %}selected{% endif %}>{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
+                            <small>Available models are validated against the current Speech resource and cloud before request submission.</small>
+                        </div>
                         <div class="form-group">
                             <label for="audioFile">Select Audio File (WAV format recommended)</label>
                             <input type="file" id="audioFile" name="audioFile" accept=".wav" required>
@@ -289,10 +309,9 @@
                         <div class="form-group">
                             <label for="fastModel">Model</label>
                             <select id="fastModel" name="model">
-                                <option value="azure-speech">Azure Speech (default)</option>
-                                {% if enable_mai_transcription %}
-                                <option value="MAI-Transcribe-2">MAI-Transcribe-2</option>
-                                {% endif %}
+                                {% for option in fast_model_options %}
+                                <option value="{{ option.value }}" {% if option.get('default') %}selected{% endif %}>{{ option.label }}</option>
+                                {% endfor %}
                             </select>
                             <small>The selected model must be available in your Speech resource's region and cloud.</small>
                             {% if mai_unavailable_reason %}
@@ -346,6 +365,16 @@
                             <label for="batchJobName">Job Name (Optional)</label>
                             <input type="text" id="batchJobName" name="jobName" 
                                    placeholder="e.g., Board Meeting 2024-01-15 (auto-generated if empty)" autocomplete="off">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="batchModel">Model</label>
+                            <select id="batchModel" name="model">
+                                {% for option in batch_model_options %}
+                                <option value="{{ option.value }}" {% if option.get('default') %}selected{% endif %}>{{ option.label }}</option>
+                                {% endfor %}
+                            </select>
+                            <small>Available batch models are validated against the current Azure Speech resource and region.</small>
                         </div>
 
                         <div class="form-group">

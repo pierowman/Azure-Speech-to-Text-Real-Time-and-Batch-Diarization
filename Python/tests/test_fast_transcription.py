@@ -131,8 +131,18 @@ def test_partial_override_does_not_silently_fall_back(monkeypatch, name, region)
 def test_mai_does_not_use_commercial_cloud_from_government(monkeypatch):
     monkeypatch.setattr(config, 'AZURE_CLOUD', 'AzureUSGovernment')
     assert config.MAI_SPEECH_ENDPOINT == 'https://test-mai.cognitiveservices.azure.us/'
-    with pytest.raises(ValidationException, match='not documented as available'):
+    with pytest.raises(ConfigurationException, match='Azure Government'):
         FastTranscriptionService().build_definition('MAI-Transcribe-2', '', True, 'clean')
+
+
+def test_government_cloud_hides_unsupported_features_and_disables_fast(monkeypatch):
+    monkeypatch.setattr(config, 'AZURE_CLOUD', 'AzureUSGovernment')
+    monkeypatch.setattr(config, 'ENABLE_FAST_TRANSCRIPTION', True)
+    monkeypatch.setattr(config, 'ENABLE_MAI_TRANSCRIPTION', True)
+    assert config.IS_AZURE_GOVERNMENT is True
+    assert 'Fast transcription' in config.FEATURES_UNAVAILABLE_IN_AZURE_GOVERNMENT
+    with pytest.raises(ConfigurationException, match='Azure Government'):
+        FastTranscriptionService().build_definition('azure-speech', '', True, 'verbatim')
 
 
 def test_parse_timing_speakers_statistics_and_raw_json(payload):
@@ -170,7 +180,6 @@ def test_no_speech():
 
 @pytest.mark.parametrize('cloud,suffix,scope', [
     ('AzureCloud', 'azure.com', 'https://cognitiveservices.azure.com/.default'),
-    ('AzureUSGovernment', 'azure.us', 'https://cognitiveservices.azure.us/.default'),
 ])
 def test_multipart_endpoint_and_auth(monkeypatch, tmp_path, payload, cloud, suffix, scope):
     monkeypatch.setattr(config, 'AZURE_CLOUD', cloud)
@@ -388,3 +397,21 @@ def test_unsupported_mai_hidden_and_rejected_before_upload(client, monkeypatch, 
     assert 'AZURE_MAI_SPEECH_RESOURCE_NAME' in result.get_json()['message']
     assert not list(tmp_path.iterdir())
     post.assert_not_called()
+
+
+def test_model_catalog_is_available_across_modes():
+    assert config.get_model_options('realtime') == [
+        {'value': 'azure-speech', 'label': 'Azure Speech (default)', 'default': True},
+    ]
+    assert config.get_model_options('batch') == [
+        {'value': 'azure-speech', 'label': 'Azure Speech (default)', 'default': True},
+    ]
+    fast_models = config.get_model_options('fast')
+    assert {m['value'] for m in fast_models} == {'azure-speech', 'MAI-Transcribe-2'}
+    assert config.validate_model_selection('realtime', 'azure-speech') == 'azure-speech'
+    assert config.validate_model_selection('fast', 'azure-speech') == 'azure-speech'
+
+
+def test_invalid_model_selection_is_rejected():
+    with pytest.raises(ValidationException, match='not supported'):
+        config.validate_model_selection('batch', 'unknown-model')

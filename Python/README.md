@@ -155,6 +155,30 @@ Voice Live has a different availability table. The UI hides MAI and displays the
 configuration reason for an unsupported region/cloud; the upload route also
 rejects that selection before saving or sending audio.
 
+### Azure Government feature availability
+
+Azure Government does not expose the full set of Azure AI Speech capabilities
+that are available in commercial Azure. Before enabling any feature in a sovereign
+cloud, confirm support in the relevant service documentation and region. This app
+explicitly disables unsupported capabilities in `AzureUSGovernment`, including:
+
+- Custom voice
+- Personal voice
+- Text to speech avatar
+- Fast transcription
+- Pronunciation assessment
+- Custom keyword
+- Voice Live
+- Live interpreter
+- Video translation
+- LLM speech
+
+Refer to the official Azure Speech sovereign cloud guidance:
+<https://learn.microsoft.com/en-us/azure/ai-services/speech-service/sovereign-clouds?tabs=c-sharp>
+
+This app follows that guidance by hiding commercial-only features and preventing
+unsupported selections from being processed when `AZURE_CLOUD=AzureUSGovernment`.
+
 To leave real-time, batch, and standard fast transcription on the original
 resource, configure an existing MAI-capable resource separately:
 
