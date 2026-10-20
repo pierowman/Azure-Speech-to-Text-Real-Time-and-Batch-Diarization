@@ -105,7 +105,7 @@
     <div class="container">
         <header>
             <h1>🎤 Azure Speech-to-Text</h1>
-            <p>Real-time and Batch transcription with speaker diarization</p>
+            <p>Real-time, Fast, and Batch transcription with speaker diarization</p>
         </header>
 
         <div class="main-content">
@@ -114,6 +114,9 @@
                 <button class="tab-btn active" onclick="switchTab('realtime')" 
                         role="tab" aria-selected="true" aria-controls="realtime-tab" 
                         id="tab-realtime">🎙️ Real-time Transcription</button>
+                <button class="tab-btn" onclick="switchTab('fast')"
+                        role="tab" aria-selected="false" aria-controls="fast-tab"
+                        id="tab-fast">Fast Transcription</button>
                 <button class="tab-btn" onclick="switchTab('batch')" 
                         role="tab" aria-selected="false" aria-controls="batch-tab" 
                         id="tab-batch">📦 Batch Transcription</button>
@@ -269,6 +272,60 @@
                         <div id="auditLogEntries"></div>
                     </div>
                 </div>
+            </div>
+
+            <div id="fast-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-fast">
+                <div class="upload-section">
+                    <h2>Fast Transcription API</h2>
+                    <p>Upload a recording and receive its transcript directly, without creating a batch job or uploading to Blob Storage.</p>
+                    {% if enable_fast_transcription %}
+                    <form id="fastForm" data-max-bytes="{{ fast_max_file_size_mb * 1024 * 1024 }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="fastAudioFile">Audio file</label>
+                            <input type="file" id="fastAudioFile" name="audioFile" accept=".wav,.mp3,.flac" required>
+                            <small>WAV, MP3, FLAC | Maximum {{ fast_max_file_size_mb }} MB. Duration limits depend on the model and diarization; longer recordings can use Batch Transcription.</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="fastModel">Model</label>
+                            <select id="fastModel" name="model">
+                                <option value="azure-speech">Azure Speech (default)</option>
+                                {% if enable_mai_transcription %}
+                                <option value="MAI-Transcribe-2">MAI-Transcribe-2</option>
+                                {% endif %}
+                            </select>
+                            <small>The selected model must be available in your Speech resource's region and cloud.</small>
+                            {% if mai_unavailable_reason %}
+                            <small>{{ mai_unavailable_reason }}</small>
+                            {% else %}
+                            <small>MAI uses its configured resource in {{ mai_region }}. Other models continue using the primary Speech resource.</small>
+                            {% endif %}
+                        </div>
+                        <div class="form-group">
+                            <label for="fastLocale">Language hint (optional)</label>
+                            <input type="text" id="fastLocale" name="locale" placeholder="Auto-detect (for example, en-US)">
+                            <small>Leave blank for automatic language detection.</small>
+                        </div>
+                        <div class="form-group checkbox-group">
+                            <input type="checkbox" id="fastDiarization" checked>
+                            <label for="fastDiarization">Enable speaker diarization</label>
+                        </div>
+                        <div class="form-group" id="fastStyleGroup" hidden>
+                            <label for="fastStyle">MAI transcript style</label>
+                            <select id="fastStyle" name="style">
+                                <option value="verbatim">Verbatim (preserve fillers and false starts)</option>
+                                <option value="clean">Clean (remove fillers)</option>
+                            </select>
+                        </div>
+                        <button type="submit" id="fastTranscribeBtn">Start Fast Transcription</button>
+                    </form>
+                    {% else %}
+                    <p role="status">Fast Transcription is disabled in this environment. Confirm availability in your cloud and region before enabling ENABLE_FAST_TRANSCRIPTION.</p>
+                    {% endif %}
+                    <p class="info" id="fastStatus" role="status" aria-live="polite" hidden></p>
+                    <p class="error" id="fastError" role="alert" hidden></p>
+                </div>
+                <div id="fastResultsHost"></div>
             </div>
 
             <!-- Batch Tab -->

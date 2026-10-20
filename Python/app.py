@@ -22,11 +22,12 @@ from config import config
 from models import SpeakerSegment, TranscriptionResult
 from exceptions import (
     AppException, InvalidAudioFileException, TranscriptionException,
-    ResourceNotFoundException, RateLimitException, AuthorizationException
+    ResourceNotFoundException, RateLimitException, AuthorizationException, ValidationException
 )
 from validators import audio_file_validator
 from services.speech_service import speech_to_text_service
 from services.batch_service import batch_transcription_service
+from services.fast_service import fast_transcription_service
 
 # Import new helper modules
 from decorators import temporary_file, TempFileResponse, cleanup_files_on_error
@@ -260,7 +261,12 @@ def index():
                          batch_allowed_extensions=config.BATCH_ALLOWED_EXTENSIONS,
                          default_min_speakers=config.DEFAULT_MIN_SPEAKERS,
                          default_max_speakers=config.DEFAULT_MAX_SPEAKERS,
-                         default_locale=config.DEFAULT_LOCALE)
+                         default_locale=config.DEFAULT_LOCALE,
+                         enable_fast_transcription=config.ENABLE_FAST_TRANSCRIPTION,
+                         enable_mai_transcription=not bool(config.MAI_UNAVAILABLE_REASON),
+                         mai_unavailable_reason=config.MAI_UNAVAILABLE_REASON,
+                         mai_region=config.MAI_SPEECH_REGION,
+                         fast_max_file_size_mb=min(config.FAST_MAX_FILE_SIZE, config.MAX_CONTENT_LENGTH) // (1024 * 1024))
 
 
 @app.route('/favicon.ico')
@@ -322,6 +328,41 @@ def upload_and_transcribe() -> Response:
     except Exception as ex:
         logger.error(f"Unexpected error in upload_and_transcribe: {ex}", exc_info=True)
         raise TranscriptionException(str(ex))
+
+
+@app.route('/fast-transcribe', methods=['POST'])
+def fast_transcribe() -> Response:
+    """Transcribe an uploaded recording synchronously, retaining audio for playback."""
+    diarization = request.form.get('enableDiarization', 'true')
+    if diarization not in ('true', 'false'):
+        raise ValidationException("Diarization must be true or false.")
+    definition = fast_transcription_service.build_definition(
+        request.form.get('model', 'azure-speech'),
+        request.form.get('locale', '').strip(),
+        diarization == 'true',
+        request.form.get('style', 'verbatim'),
+    )
+    audio_file = request.files.get('audioFile')
+    audio_file_validator.validate_file(audio_file, mode='fast')
+    file_path = _save_uploaded_file(audio_file, config.UPLOAD_FOLDER)
+    completed = False
+    try:
+        result = fast_transcription_service.transcribe(file_path, definition)
+        result.audio_file_url = f"/{config.UPLOAD_FOLDER}/{os.path.basename(file_path)}"
+        result.golden_record_json_data = json.dumps(result.to_dict(), indent=2)
+        data = result.to_dict()
+        data['model'] = request.form.get('model', 'azure-speech')
+        locales = sorted({
+            phrase['locale'] for phrase in json.loads(result.raw_json_data)['phrases']
+            if phrase.get('locale')
+        })
+        data['locale'] = ', '.join(locales) or request.form.get('locale', '') or 'Auto-detected'
+        completed = True
+        return jsonify(data)
+    finally:
+        # Keep successful audio for the shared player, but not failed uploads.
+        if not completed:
+            os.remove(file_path)
 
 
 @app.route('/update-speaker-names', methods=['POST'])

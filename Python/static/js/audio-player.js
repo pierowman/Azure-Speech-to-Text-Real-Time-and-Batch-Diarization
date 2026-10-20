@@ -67,8 +67,8 @@ export function setupAudioPlayerEvents() {
 
 export function setupKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
-        if (AppState.currentTab !== 'realtime') return;
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (!['realtime', 'fast'].includes(AppState.currentTab)) return;
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
         if (e.target.isContentEditable) return;
         if (AppState.editingSegmentIndex !== null) return;
         switch(e.key) {

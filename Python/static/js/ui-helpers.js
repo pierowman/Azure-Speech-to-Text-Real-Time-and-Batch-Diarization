@@ -187,9 +187,10 @@ export async function switchTab(tabName) {
     
     // Update tab buttons
     document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
+        const selected = btn.id === `tab-${tabName}`;
+        btn.classList.toggle('active', selected);
+        btn.setAttribute('aria-selected', String(selected));
     });
-    event.target.classList.add('active');
     
     // Update tab content
     document.querySelectorAll('.tab-content').forEach(content => {

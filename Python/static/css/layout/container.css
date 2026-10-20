@@ -35,6 +35,10 @@
     margin-bottom: 20px;
 }
 
+#fast-tab .upload-section > p {
+    margin-bottom: var(--gap-xl);
+}
+
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

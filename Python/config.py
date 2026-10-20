@@ -75,6 +75,24 @@ class Config:
     SHOW_TRANSCRIPTION_JOBS_TAB = os.getenv('SHOW_TRANSCRIPTION_JOBS_TAB', 'true').lower() == 'true'
     ENABLE_BATCH_TRANSCRIPTION = os.getenv('ENABLE_BATCH_TRANSCRIPTION', 'true').lower() == 'true'
     BATCH_JOB_AUTO_REFRESH_SECONDS = int(os.getenv('BATCH_JOB_AUTO_REFRESH_SECONDS', 60))
+
+    # Sovereign-cloud availability must be confirmed before explicitly enabling.
+    ENABLE_FAST_TRANSCRIPTION = os.getenv(
+        'ENABLE_FAST_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')
+    ).lower() == 'true'
+    ENABLE_MAI_TRANSCRIPTION = os.getenv(
+        'ENABLE_MAI_TRANSCRIPTION', str(AZURE_CLOUD == 'AzureCloud')
+    ).lower() == 'true'
+    AZURE_MAI_SPEECH_RESOURCE_NAME = os.getenv('AZURE_MAI_SPEECH_RESOURCE_NAME', '').strip()
+    AZURE_MAI_SPEECH_REGION = os.getenv('AZURE_MAI_SPEECH_REGION', '').strip()
+    # MAI via transcriptions:transcribe (not Voice Live), documented October 2026.
+    MAI_SUPPORTED_REGIONS = (
+        'centralindia', 'eastus', 'northeurope', 'southeastasia', 'westus', 'westus2',
+    )
+    FAST_TRANSCRIPTION_API_VERSION = os.getenv('FAST_TRANSCRIPTION_API_VERSION', '2025-10-15')
+    FAST_TRANSCRIPTION_TIMEOUT_SECONDS = int(os.getenv('FAST_TRANSCRIPTION_TIMEOUT_SECONDS', 180))
+    FAST_ALLOWED_EXTENSIONS = ['.wav', '.mp3', '.flac']
+    FAST_MAX_FILE_SIZE = 250 * 1024 * 1024
     
     # Cache settings
     LOCALES_CACHE_DURATION_HOURS = int(os.getenv('LOCALES_CACHE_DURATION_HOURS', 24))
@@ -158,6 +176,39 @@ class Config:
         """Build the Speech resource endpoint URL from the resource name and cloud suffix"""
         if self.AZURE_SPEECH_RESOURCE_NAME:
             return f"https://{self.AZURE_SPEECH_RESOURCE_NAME}.{self._cloud['cognitive_endpoint_suffix']}/"
+        return ""
+
+    @property
+    def MAI_SPEECH_REGION(self):
+        """Use the optional MAI resource's region without changing other workflows."""
+        return (self.AZURE_MAI_SPEECH_REGION or self.AZURE_SPEECH_REGION or '').strip().lower()
+
+    @property
+    def MAI_SPEECH_ENDPOINT(self):
+        """Build the MAI resource endpoint in the same configured Azure cloud."""
+        if self.AZURE_MAI_SPEECH_RESOURCE_NAME:
+            return f"https://{self.AZURE_MAI_SPEECH_RESOURCE_NAME}.{self._cloud['cognitive_endpoint_suffix']}/"
+        return self.AZURE_SPEECH_ENDPOINT
+
+    @property
+    def MAI_UNAVAILABLE_REASON(self):
+        """Share MAI configuration/availability validation between the UI and API."""
+        if not self.ENABLE_MAI_TRANSCRIPTION:
+            return "MAI-Transcribe-2 is disabled for this environment."
+        if bool(self.AZURE_MAI_SPEECH_RESOURCE_NAME) != bool(self.AZURE_MAI_SPEECH_REGION):
+            return (
+                "Set both AZURE_MAI_SPEECH_RESOURCE_NAME and AZURE_MAI_SPEECH_REGION "
+                "to use a separate MAI resource."
+            )
+        if self.AZURE_CLOUD != 'AzureCloud':
+            return "MAI-Transcribe-2 through Fast Transcription is not documented as available in this Azure cloud."
+        if self.MAI_SPEECH_REGION not in self.MAI_SUPPORTED_REGIONS:
+            return (
+                f"MAI-Transcribe-2 through Fast Transcription is not available in "
+                f"'{self.MAI_SPEECH_REGION}'. Configure AZURE_MAI_SPEECH_RESOURCE_NAME "
+                f"and AZURE_MAI_SPEECH_REGION for a resource in a supported region: "
+                f"{', '.join(self.MAI_SUPPORTED_REGIONS)}."
+            )
         return ""
 
     @property

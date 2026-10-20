@@ -25,10 +25,12 @@ import {
 } from './ui-helpers.js';
 import { displayResults } from './transcription-display.js';
 import { refreshJobList } from './batch-manager.js';
+import { setupFastForm } from './fast-transcription.js';
 
 // Setup form handlers on page load
 export function setupForms() {
     setupRealtimeForm();
+    setupFastForm();
     setupBatchForm();
     setupBatchFilePreview();
 }
@@ -45,6 +47,10 @@ function setupRealtimeForm() {
     
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (AppState.isTranscribing) {
+            showError('Wait for the current transcription to finish.');
+            return;
+        }
         
         const formData = new FormData();
         const audioFile = document.getElementById('audioFile').files[0];
@@ -62,7 +68,11 @@ function setupRealtimeForm() {
         console.log('='.repeat(80));
         
         // ?? Reset application state before starting new transcription
+        AppState.isTranscribing = true;
+        const fastButton = document.getElementById('fastTranscribeBtn');
+        if (fastButton) fastButton.disabled = true;
         resetAppState();
+        document.getElementById('realtime-tab').appendChild(document.getElementById('resultsSection'));
         
         formData.append('audioFile', audioFile);
         
@@ -145,6 +155,8 @@ function setupRealtimeForm() {
             console.error('='.repeat(80));
             showError('An error occurred: ' + error.message);
         } finally {
+            AppState.isTranscribing = false;
+            if (fastButton) fastButton.disabled = false;
             showLoading(false);
             transcribeBtn.disabled = false;
             transcribeBtn.textContent = transcribeBtn.dataset.originalText || '?? Start Real-time Transcription';

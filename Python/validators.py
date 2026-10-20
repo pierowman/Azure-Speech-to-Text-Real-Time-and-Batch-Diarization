@@ -45,7 +45,7 @@ class AudioFileValidator:
         
         Args:
             file: The uploaded file
-            mode: 'realtime' or 'batch'
+            mode: 'realtime', 'fast', or 'batch'
             
         Raises:
             InvalidAudioFileException: If validation fails
@@ -55,7 +55,12 @@ class AudioFileValidator:
         
         # Check file extension
         ext = os.path.splitext(file.filename)[1].lower()
-        allowed_extensions = self.realtime_extensions if mode == 'realtime' else self.batch_extensions
+        if mode == 'fast':
+            allowed_extensions = config.FAST_ALLOWED_EXTENSIONS
+            max_size = min(config.FAST_MAX_FILE_SIZE, config.MAX_CONTENT_LENGTH)
+        else:
+            allowed_extensions = self.realtime_extensions if mode == 'realtime' else self.batch_extensions
+            max_size = self.realtime_max_size if mode == 'realtime' else self.batch_max_size
         
         if ext not in allowed_extensions:
             ext_list = ', '.join(allowed_extensions)
@@ -69,8 +74,6 @@ class AudioFileValidator:
             # Seek to end to get size
             file.seek(0, os.SEEK_END)
             file_size = file.tell()
-            
-            max_size = self.realtime_max_size if mode == 'realtime' else self.batch_max_size
             
             if file_size == 0:
                 raise InvalidAudioFileException("File is empty")
@@ -185,4 +188,3 @@ class AudioFileValidator:
 
 # Create a global instance
 audio_file_validator = AudioFileValidator()
-

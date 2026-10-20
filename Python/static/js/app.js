@@ -12,6 +12,7 @@ import './export-manager.js';
 export const AppState = {
     transcriptionData: null,
     currentTab: 'realtime',
+    isTranscribing: false,
     audioPlayer: null,
     isSeeking: false,
     currentActiveSegment: null,

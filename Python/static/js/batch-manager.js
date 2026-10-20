@@ -297,6 +297,11 @@ export async function viewJobResults(jobId) {
 
 async function loadJobResults(jobId, fileIndices) {
     console.log(`?? loadJobResults called with:`, { jobId, fileIndices });
+    if (AppState.isTranscribing) {
+        showBatchError('Wait for the current transcription to finish before loading batch results.');
+        return;
+    }
+    AppState.isTranscribing = true;
     
     // ?? Reset application state before loading batch results
     resetAppState();
@@ -346,6 +351,7 @@ async function loadJobResults(jobId, fileIndices) {
                 auditLog: []
             };
             
+            document.getElementById('realtime-tab').appendChild(document.getElementById('resultsSection'));
             displayResults(AppState.transcriptionData);
             document.getElementById('tab-realtime').click();
             document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
@@ -357,6 +363,7 @@ async function loadJobResults(jobId, fileIndices) {
         console.error('? Error loading job results:', error);
         showBatchError('Error retrieving job results: ' + error.message);
     } finally {
+        AppState.isTranscribing = false;
         showBatchLoading(false);
     }
 }

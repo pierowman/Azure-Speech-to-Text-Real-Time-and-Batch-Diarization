@@ -29,6 +29,10 @@
     display: block;
 }
 
+#fastError:not([hidden]), #fastStatus:not([hidden]) {
+    display: block;
+}
+
 .info-message {
     background: #e3f2fd;
     border: 1px solid #90caf9;

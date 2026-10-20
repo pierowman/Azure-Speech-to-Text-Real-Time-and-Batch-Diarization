@@ -16,6 +16,7 @@ A Flask-based web application for transcribing audio files with speaker diarizat
 
 - **Real-time Transcription**: Upload audio files for immediate transcription with speaker diarization
 - **Batch Transcription**: Process multiple audio files asynchronously
+- **Fast Transcription**: Direct file transcription with Azure Speech or MAI-Transcribe-2, optional diarization, and shared playback/edit/export tools
 - **Speaker Management**: Edit speaker names and segment text
 - **Audit Logging**: Track all edits with comprehensive audit trails
 - **Export Options**: Download transcripts as Word documents or JSON
@@ -125,6 +126,59 @@ pip install gunicorn
 # Run with Gunicorn
 gunicorn --bind 0.0.0.0:5000 --workers 4 --timeout 120 app:app
 ```
+
+## Fast Transcription
+
+The **Fast Transcription** tab uploads one WAV, MP3, or FLAC file directly to
+`/speechtotext/transcriptions:transcribe` using Microsoft Entra ID and the existing
+cloud-aware Speech resource endpoint. Blob Storage is not required. The app caps
+uploads at 250 MB (or `MAX_CONTENT_LENGTH` if lower); Azure enforces the selected
+model's duration and diarization limits.
+
+Choose **Azure Speech** or **MAI-Transcribe-2**, optionally provide a language hint,
+and enable speaker diarization as needed. MAI also offers clean/verbatim output.
+Results use the existing transcript player, speaker editor, audit log, and exports.
+Only one real-time/fast transcription or batch-result load can own the shared
+results workspace at a time; starting another replaces the previous results.
+
+`ENABLE_FAST_TRANSCRIPTION` and `ENABLE_MAI_TRANSCRIPTION` default to true in
+commercial Azure and false in Government. Confirm regional/model availability
+before enabling them; enabling a flag does not provision a model or guarantee
+service availability. Disable MAI independently if your region only supports the
+standard fast API. The same Speech data-plane RBAC roles used by batch are needed.
+
+### Separate MAI resource
+
+MAI via the Fast Transcription API is currently documented in `centralindia`,
+`eastus`, `northeurope`, `southeastasia`, `westus`, and `westus2`, not `eastus2`.
+Voice Live has a different availability table. The UI hides MAI and displays the
+configuration reason for an unsupported region/cloud; the upload route also
+rejects that selection before saving or sending audio.
+
+To leave real-time, batch, and standard fast transcription on the original
+resource, configure an existing MAI-capable resource separately:
+
+```env
+AZURE_MAI_SPEECH_RESOURCE_NAME=your-existing-mai-resource
+AZURE_MAI_SPEECH_REGION=eastus
+```
+
+Set both values together, in `.env` locally or App Service application settings,
+then restart the app. These settings do not create/move a resource. The MAI
+resource must be in the same `AZURE_CLOUD`, and the app's identity needs
+`Cognitive Services Speech User` (or an appropriate Cognitive Services data-plane
+role) on that resource as well. Endpoint suffix and Entra token scope remain
+cloud-aware. Without overrides, MAI uses the primary Speech resource only if its
+configured region is supported. Real-time and batch settings are unchanged.
+
+`FAST_TRANSCRIPTION_API_VERSION` defaults to `2025-10-15` and
+`FAST_TRANSCRIPTION_TIMEOUT_SECONDS` to 180 seconds. Large requests can exceed
+App Service/proxy or Gunicorn timeouts; use Batch Transcription for long-running
+recordings or configure appropriate hosting timeouts. Failed uploads are removed;
+successful audio is retained for playback, as in the real-time workflow.
+
+References: [Fast Transcription](https://learn.microsoft.com/azure/ai-services/speech-service/fast-transcription-create)
+and [MAI-Transcribe-2](https://learn.microsoft.com/azure/ai-services/speech-service/mai-transcribe).
 
 ## ?? Verifying Connectivity & Permissions
 

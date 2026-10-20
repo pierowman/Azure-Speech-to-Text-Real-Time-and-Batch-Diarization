@@ -1,6 +1,7 @@
 /* Tab Navigation */
 .tab-nav {
     display: flex;
+    flex-wrap: wrap;
     border-bottom: 2px solid var(--primary-color);
     margin-bottom: 30px;
 }
